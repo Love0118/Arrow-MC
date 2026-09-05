@@ -9,8 +9,9 @@ packet compression·section 변경/완료 소유자·실제 configuration snapsh
 [접속 준비 범위](connection-preparation.md)에 구현·자원·남은 통합 경계를 기록했다.
 [로그인·configuration·예약 tick](login-configuration.md)에는 이번 실제 접속 경로와 실행 방법이 있다.
 로그인 인증부터 configuration까지 연결했고, Play·spawn·월드 생성·게임 tick 실행은 남아 있다.
-직전 로그인 묶음은 로컬 전체 debug/release332개와 Clippy·format을 통과했다. 당시 선택 검증16개는 기본 실행에서 제외했다.
-서버 실제 TCP/CLI12개·section18개·runtime13개와 독립 검수, 공식 codec/UTF-8/section 대조를 포함한다.
+이후 실제 chunk 저장 로딩·canonical owner·heightmap·view·chunk packet을 추가했다.
+최신 source commit `15e689d`는 네 native 플랫폼에서 debug/release 각각521개와 Clippy·format을 통과했다.
+각 profile의 선택29개는 기본 CI에서 제외하며, 실제 Java 실행 근거는 아래 단계별 기록에서 구분한다.
 
 commit `7a3e90e`의 [CI run33953216241](https://github.com/Love0118/Arrow-MC/actions/runs/33953216241)에서 네 native 플랫폼
 전부 architecture·format·Clippy·debug198·release198 테스트가 통과했다. Python tooling·Unicode 재생성과 Linux의
@@ -32,7 +33,9 @@ registry·heightmap·view·packet의 구현 에이전트와 좁은 NBT sizing �
 이는 실제 world producer·light fence·Play 상태 활성화를 대신하지 않는다.
 
 Windows 전체 debug521/release521통과(각선택29제외), all-target Clippy·format과 Python57개 중55통과/2제외를 확인했다.
-새 native CI는 확인 중이다. 실제 Java 대조는 view6,182행, heightmap70snapshots 및 모든35,723predicate,
+commit `15e689d`의 [CI run33963649619](https://github.com/Love0118/Arrow-MC/actions/runs/33963649619)에서
+네 native 플랫폼 전부 architecture·format·Clippy·debug521/release521(각선택29제외)와 tooling을 통과했다.
+실제 Java 대조는 view6,182행, heightmap70snapshots 및 모든35,723predicate,
 chunk packet78사례와231byte golden이다. v2 registry의 독립 hash로 이전72개 chunk 저장 oracle도 다시 통과했다.
 실제 inspector에서 heightmap4개/1,184bytes와24sections/192bytes를 확인했다.
 
@@ -40,6 +43,19 @@ chunk packet78사례와231byte golden이다. v2 registry의 독립 hash로 이�
 원본 소스·JAR·생성된 bulk Mojang 데이터는 로컬 참조에 남기고 독립 API 호출 helper와 검증 코드만 배포한다.
 기존 native/Rust artifact가 있는 로컬 cache에서 이번 all-target compile은 debug26.53s/release34.06s였다.
 이는 빈 target의 최초 빌드나 속도 향상 측정이 아니다. 로그와 집계는 로컬 `Roadmap/reviews/heightmap-view-packet-build-validation.json`에 있다.
+
+같은 native image·dependency key의 캐시를 네 host 모두 정확히 복원했다. 로그에는 Arrow만 다시 빌드했고 OpenSSL/의존성 재컴파일은 없었다.
+cache hit에서 정리·재저장을 건너뛰는 경로도 확인했다. 아래는 이전 `8cccaa3`의 첫 miss와 `15e689d`의 hit를 각각 한 번 관찰한 CI job 전체 시간이다.
+
+| Native host | 첫 miss | 정확한 hit | 복원 시간 |
+| --- | ---: | ---: | ---: |
+| Linux ARM64 | 283s | 149s | 3s |
+| Linux x86_64 | 341s | 146s | 5s |
+| macOS ARM64 | 439s | 148s | 10s |
+| Windows x86_64 | 1,294s | 348s | 19s |
+
+소스·테스트 범위가481→521로 달라졌고 host 간·반복 표본을 통제한 동일 소스 benchmark가 아니다.
+일반 clean build나 runtime/TPS 향상으로 해석하지 않는다. raw log hash·cache ID·step 시간은 로컬 `Roadmap/reviews/heightmap-ci-cache-15e689d.json`에 있다.
 
 ## 로드된 청크 owner·chunk sender 추가
 
@@ -59,7 +75,7 @@ raw 저장 읽기·canonical resident·현재 game send-ready를 구분하며, �
 native runner/architecture/target·host image·toolchain·lock·manifest·native helper·workflow 설정이 같을 때만 재사용한다.
 모든 검사는 항상 실행하고 cache miss의 성공한 job에서 `cargo clean --locked --package arrow-mc`로 Arrow 산출물을 제거한 뒤
 의존성만 보존한다. 다른 key로의 fallback은 사용하지 않는다. 최초 네 플랫폼 cache miss·정리·저장이 모두 성공했고,
-저장된 캐시4개의 합계는1,649,632,556bytes였다. 복원 성능은 아직 측정 전이므로 속도 개선을 주장하지 않는다.
+저장된 캐시4개의 합계는1,649,632,556bytes였다. 이후 정확한 key 복원 결과와 단일 CI 시간 비교는 위 새 묶음에 기록했다.
 workflow는 SHA를 검증한 actionlint1.7.12로 YAML·표현식·Action 입력을 확인했다. 외부 shellcheck/pyflakes는 사용하지 않았다.
 이번 로컬 all-target compile 시간은 debug21.80s/release38.32s였다. 기존 native/Rust artifact가 있는 cache의 증분 값이며
 최초 빌드나 성능 향상 수치가 아니다. 새 runtime 의존성이나 crate 분리는 없다.
