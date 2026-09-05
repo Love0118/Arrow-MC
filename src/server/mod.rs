@@ -8,6 +8,7 @@
 
 pub mod access;
 pub mod auth;
+pub mod chunk_packet;
 pub mod chunk_sender;
 pub mod compression;
 pub mod configuration;

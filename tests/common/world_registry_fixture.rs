@@ -16,7 +16,12 @@ pub const PROTOCOL: i32 = 1_073_742_158;
 pub const SOURCE_HASH: [u8; 32] = [0x38; 32];
 pub const CONFIGURATION_HASH: [u8; 32] = [0x57; 32];
 pub const SOURCE_BYTES: u64 = 1234;
-pub const FILES: [&str; 3] = ["blocks.json", "biomes.json", "export-metadata.json"];
+pub const FILES: [&str; 4] = [
+    "blocks.json",
+    "biomes.json",
+    "export-metadata.json",
+    "block-entity-types.json",
+];
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
 pub fn hex(bytes: &[u8]) -> String {
@@ -55,7 +60,16 @@ impl Fixture {
 
     /// Derive authentication metadata for caller-authored small test domains.
     /// This does not validate the domain; malformed-domain tests use the real loader.
-    pub fn from_data(blocks: Value, biomes: Value) -> Self {
+    pub fn from_data(mut blocks: Value, biomes: Value) -> Self {
+        // Unrelated test fixtures explicitly choose empty synthetic tag sets.
+        // Production schema has no default for a missing heightmap_tags field.
+        for block in blocks["blocks"].as_array_mut().unwrap() {
+            block
+                .as_object_mut()
+                .unwrap()
+                .entry("heightmap_tags")
+                .or_insert(json!(0));
+        }
         let root = std::env::temp_dir().join(format!(
             "arrow-world-registry-{}-{}",
             std::process::id(),
@@ -66,6 +80,12 @@ impl Fixture {
         write_json(&root.join("blocks.json"), &blocks);
         write_json(&root.join("biomes.json"), &biomes);
         write_json(
+            &root.join("block-entity-types.json"),
+            &json!([
+                {"id":"test:lamp","protocol_id":0}, {"id":"minecraft:chest","protocol_id":1}
+            ]),
+        );
+        write_json(
             &root.join("export-metadata.json"),
             &json!({"minecraft_version":VERSION,"protocol":PROTOCOL,"source_jar":source,
                 "block_count":blocks["blocks"].as_array().unwrap().len(),
@@ -73,7 +93,7 @@ impl Fixture {
         );
         write_json(
             &root.join("manifest.json"),
-            &json!({"format_version":1,"minecraft_version":VERSION,"protocol":PROTOCOL,
+            &json!({"format_version":2,"minecraft_version":VERSION,"protocol":PROTOCOL,
                 "source_jar":source,"configuration_manifest_sha256":hex(&CONFIGURATION_HASH),
                 "selected_packs":[{"id":"vanilla","version":VERSION,
                     "hash_kind":"source_jar_sha256","sha256":hex(&SOURCE_HASH)}],"files":[]}),

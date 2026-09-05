@@ -21,7 +21,9 @@ from prepare_configuration_data import (DECOMPILE, LOCK_PATH, REPOSITORY, digest
                                         verified_artifacts, write_json)
 
 GENERATOR = REPOSITORY / "tools" / "oracles" / "ExportBlockStateData.java"
-JSON_FILES = ("blocks.json", "biomes.json", "export-metadata.json")
+JSON_FILES = ("blocks.json", "biomes.json", "block-entity-types.json", "export-metadata.json")
+HEIGHTMAP_TAGS = ("minecraft:blocks_motion_in_heightmap",
+                 "minecraft:blocks_motion_in_heightmap_no_leaves")
 SHA256 = re.compile(r"[0-9a-f]{64}")
 IDENTIFIER = re.compile(r"[a-z0-9_.-]+:[a-z0-9/._-]+")
 
@@ -29,6 +31,47 @@ IDENTIFIER = re.compile(r"[a-z0-9_.-]+:[a-z0-9/._-]+")
 def selected_packs(version, source_jar):
     return [{"id": "vanilla", "version": version, "hash_kind": "source_jar_sha256",
              "sha256": source_jar["sha256"]}]
+
+
+def ordered_domain(domains, registry_id):
+    if not isinstance(domains, list):
+        raise ValueError(f"Invalid registry array for {registry_id}")
+    matching = [domain for domain in domains
+                if isinstance(domain, dict) and domain.get("id") == registry_id]
+    if len(matching) != 1 or not isinstance(matching[0].get("entries"), list) or not matching[0]["entries"]:
+        raise ValueError(f"Expected exactly one nonempty configuration domain: {registry_id}")
+    entries = []
+    names = set()
+    for index, entry in enumerate(matching[0]["entries"]):
+        if (not isinstance(entry, dict) or not isinstance(entry.get("id"), str)
+                or not IDENTIFIER.fullmatch(entry["id"]) or entry["id"] in names
+                or type(entry.get("protocol_id")) is not int or entry["protocol_id"] != index):
+            raise ValueError(f"Registry IDs must be unique, contiguous and ordered: {registry_id}")
+        names.add(entry["id"])
+        entries.append({"id": entry["id"], "protocol_id": index})
+    return entries
+
+
+def heightmap_membership(tags, blocks):
+    if not isinstance(tags, list):
+        raise ValueError("Invalid configuration tag array")
+    matching = [domain for domain in tags
+                if isinstance(domain, dict) and domain.get("id") == "minecraft:block"]
+    if len(matching) != 1 or not isinstance(matching[0].get("tags"), list):
+        raise ValueError("Expected exactly one block tag domain")
+    flags = {block["id"]: 0 for block in blocks}
+    for bit, tag_id in enumerate(HEIGHTMAP_TAGS):
+        matches = [tag for tag in matching[0]["tags"]
+                   if isinstance(tag, dict) and tag.get("id") == tag_id]
+        if len(matches) != 1 or not isinstance(matches[0].get("members"), list):
+            raise ValueError(f"Missing or duplicate heightmap tag: {tag_id}")
+        members = matches[0]["members"]
+        if (any(type(member) is not int or not 0 <= member < len(blocks) for member in members)
+                or len(set(members)) != len(members)):
+            raise ValueError(f"Invalid block-domain members in heightmap tag: {tag_id}")
+        for member in members:
+            flags[blocks[member]["id"]] |= 1 << bit
+    return flags
 
 
 def verified_configuration(root, manifest_sha256, version, protocol, source_jar):
@@ -69,7 +112,7 @@ def verified_configuration(root, manifest_sha256, version, protocol, source_jar)
     if not all(name in expected for name in configuration.JSON_FILES):
         raise ValueError("Missing required configuration descriptor")
     found = set()
-    registry_contents = None
+    captured = {}
     for path in root.rglob("*"):
         if path.is_symlink() or path.resolve() != path:
             raise ValueError("Configuration files must not redirect through symlinks")
@@ -82,11 +125,12 @@ def verified_configuration(root, manifest_sha256, version, protocol, source_jar)
             continue
         if not path.is_file() or relative not in expected:
             raise ValueError("Unexpected configuration file")
-        if relative == "registries.json":
+        if relative in ("registries.json", "static-domains.json", "tags.json"):
             # Parse the same bytes we authenticate, even if another process replaces the file.
-            registry_contents = path.read_bytes()
-            actual = {"path": relative, "bytes": len(registry_contents),
-                      "sha256": hashlib.sha256(registry_contents).hexdigest()}
+            contents = path.read_bytes()
+            captured[relative] = contents
+            actual = {"path": relative, "bytes": len(contents),
+                      "sha256": hashlib.sha256(contents).hexdigest()}
         else:
             actual = file_record(root, path)
         if actual != expected[relative]:
@@ -94,23 +138,12 @@ def verified_configuration(root, manifest_sha256, version, protocol, source_jar)
         found.add(relative)
     if found != set(expected):
         raise ValueError("Missing configuration file")
-    registries = json.loads(registry_contents)
-    if not isinstance(registries, list):
-        raise ValueError("Invalid configuration registry array")
-    matching = [registry for registry in registries
-                if isinstance(registry, dict) and registry.get("id") == "minecraft:worldgen/biome"]
-    if len(matching) != 1 or not isinstance(matching[0].get("entries"), list) or not matching[0]["entries"]:
-        raise ValueError("Expected exactly one nonempty configuration biome registry")
-    biomes = []
-    names = set()
-    for index, entry in enumerate(matching[0]["entries"]):
-        if (not isinstance(entry, dict) or not isinstance(entry.get("id"), str)
-                or not IDENTIFIER.fullmatch(entry["id"]) or entry["id"] in names
-                or type(entry.get("protocol_id")) is not int or entry["protocol_id"] != index):
-            raise ValueError("Biome registry IDs must be unique, contiguous and ordered")
-        names.add(entry["id"])
-        biomes.append({"id": entry["id"], "protocol_id": index})
-    return biomes
+    biomes = ordered_domain(json.loads(captured["registries.json"]), "minecraft:worldgen/biome")
+    static_domains = json.loads(captured["static-domains.json"])
+    blocks = ordered_domain(static_domains, "minecraft:block")
+    block_entities = ordered_domain(static_domains, "minecraft:block_entity_type")
+    heightmap_tags = heightmap_membership(json.loads(captured["tags.json"]), blocks)
+    return biomes, heightmap_tags, block_entities
 
 
 def validate_export(root, version, protocol, source_jar):
@@ -171,6 +204,7 @@ def validate_export(root, version, protocol, source_jar):
         state_ids.update(states)
     if len(state_ids) != count:
         raise ValueError("Block-state export does not cover every global state ID")
+    return data
 
 
 def prepare(configuration_manifest_sha256, decompile_root=DECOMPILE, version=None,
@@ -179,7 +213,7 @@ def prepare(configuration_manifest_sha256, decompile_root=DECOMPILE, version=Non
     version = version or lock["minecraft"]["id"]
     if version != lock["minecraft"]["id"]:
         raise ValueError("Requested version must match references.lock.json")
-    root, bootstrap, destination = local_output(decompile_root, version + "-block-states", output)
+    root, bootstrap, destination = local_output(decompile_root, version + "-block-states-v2", output)
     config_root = Path(configuration_root).absolute() if configuration_root else bootstrap / version
     if (config_root.resolve() != config_root or not config_root.is_dir()
             or config_root == bootstrap or not config_root.is_relative_to(bootstrap)
@@ -187,9 +221,12 @@ def prepare(configuration_manifest_sha256, decompile_root=DECOMPILE, version=Non
         raise ValueError("Configuration must be a separate directory below Decompile/bootstrap")
     server, libraries, protocol, provenance = verified_artifacts(root, version, lock)
     source_jar = {"sha256": digest_file(server), "bytes": server.stat().st_size}
-    biomes = verified_configuration(config_root, configuration_manifest_sha256, version, protocol, source_jar)
+    biomes, heightmap_tags, block_entities = verified_configuration(
+        config_root, configuration_manifest_sha256, version, protocol, source_jar)
     provenance["generator"] = {"path": "tools/oracles/ExportBlockStateData.java",
                                "sha256": digest_file(GENERATOR)}
+    provenance["preparer"] = {"path": "tools/prepare_block_state_data.py",
+                              "sha256": digest_file(Path(__file__))}
     stage = Path(tempfile.mkdtemp(prefix=".block-states-", dir=bootstrap)).resolve()
     try:
         export = stage / "export"
@@ -198,17 +235,25 @@ def prepare(configuration_manifest_sha256, decompile_root=DECOMPILE, version=Non
                    str(GENERATOR), str(export)]
         provenance["command"] = command
         subprocess.run(command, cwd=stage, check=True)
-        validate_export(export, version, protocol, source_jar)
+        blocks = validate_export(export, version, protocol, source_jar)
+        if {block["id"] for block in blocks["blocks"]} != set(heightmap_tags):
+            raise ValueError("Exported block names differ from the authenticated static block domain")
+        for block in blocks["blocks"]:
+            block["heightmap_tags"] = heightmap_tags[block["id"]]
+        # Compact the large state arrays so consumer admission is charged for useful data.
+        (export / "blocks.json").write_text(
+            json.dumps(blocks, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
         write_json(export / "biomes.json", biomes)
+        write_json(export / "block-entity-types.json", block_entities)
         manifest = {
-            "format_version": 1, "minecraft_version": version, "protocol": protocol,
+            "format_version": 2, "minecraft_version": version, "protocol": protocol,
             "source_jar": source_jar, "selected_packs": selected_packs(version, source_jar),
             "configuration_manifest_sha256": configuration_manifest_sha256,
             "files": [file_record(export, export / name) for name in sorted(JSON_FILES)],
             "provenance": provenance,
         }
         write_json(export / "manifest.json", manifest)
-        local_output(root, version + "-block-states", destination)
+        local_output(root, version + "-block-states-v2", destination)
         destination.parent.mkdir(parents=True, exist_ok=True)
         export.rename(destination)
         return destination

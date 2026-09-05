@@ -77,13 +77,16 @@ registry의 별도 loader admission, 압축 backend 상태·worker stack·제어
 ```powershell
 $configHash = '105626403604b8a2500181c9c27bd6abeab093df23d3f65db91d16245dc8f198'
 python tools/prepare_block_state_data.py --configuration-manifest-sha256 $configHash
-$registryHash = '9e40bbe9052b228ac350f819d101cf15317f574e51d26ff8dbfae6aac3eb69ba'
+$registryHash = 'ac40352daeef56d8a273116f9573d1684c0e13c96e5d93e485900b4a021c5557'
 cargo run --locked --release --example inspect_chunk -- `
-  '../Decompile/bootstrap/26.3-pre-2-block-states' $registryHash $configHash `
+  '../Decompile/bootstrap/26.3-pre-2-block-states-v2' $registryHash $configHash `
   'PATH/TO/WORLD/region' 0 0 -64 384
 ```
 
-hash는 이 고정 기준에 해당한다. snapshot을 갱신하면 신뢰할 수 있는 준비 결과로 함께 갱신해야 한다.
+hash는 configuration tag에 연결된 heightmap predicate와49개 block entity type ID를 추가한 format v2에 해당한다.
+v1 bundle은 로컬에 보존한다. 기존 모든 state ID/air/fluid/property 의미는 유지하며, 실제35723상태의 predicate를 공식 실행과 비교했다.
+v2의5개 파일은총586,229bytes, loader admission은75,037,312bytes다. 이는 요청 예산이며 RSS 측정이 아니다.
+snapshot을 갱신하면 신뢰할 수 있는 준비 결과로 hash를 함께 갱신해야 한다.
 예제는 파일 읽기만 수행하며 누락 파일을 생성하거나 world를 활성화하지 않는다.
 
 - 실제 공식 JAR: region 52 fixtures의 두 API 104관찰, chunk 72사례, 전체 registry ID/default/state 조회를 대조했다.

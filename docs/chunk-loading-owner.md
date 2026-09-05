@@ -50,6 +50,7 @@ context 불일치·예산 실패·counter 고갈·중복 section/lights·누락 
 정확성·자원 리뷰 두 역할이 이 소유권 경계를 검수했다. 전체 native 결과는 [구현 상태](foundation-status.md)에 따로 기록한다.
 
 `inspect_chunk` 예제는 이제 실제 요청→disk→canonical owner→공유 CPU 준비를 실행한다. 실행 인수는 [저장 로딩 문서](chunk-storage.md)와 같다.
+현재 예제에는 [HeightmapSet 복원·계산](chunk-wire-heightmap-view.md)도 연결했다. map의 별도 예산과 조회 결과를 출력한다.
 공식 registry와 직접 만든 1-section raw 파일을 Overworld 높이로 읽은 실행에서 기본 section까지 포함한 **24 sections /192 bytes**를 준비했다.
 CPU peak 예약29,360,310 bytes, resident2,574 bytes, owner metadata984 bytes였다. 1,475µs는 로컬 단일 표본이며 서버 성능 비교가 아니다.
 이 경로의 원본 기록은 로컬 `Roadmap/reviews/inspect-loading-owner-example.json`이다.

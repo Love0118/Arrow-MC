@@ -90,17 +90,7 @@ impl Writer<'_> {
     }
 
     fn string(&mut self, value: &NbtString) -> Result<(), Error> {
-        let mut length = 0usize;
-        for &unit in value.as_utf16() {
-            length += match unit {
-                1..=0x7f => 1,
-                0..=0x7ff => 2,
-                _ => 3,
-            };
-            if length > u16::MAX as usize {
-                return Err(Error::StringTooLong);
-            }
-        }
+        let length = modified_utf8_len(value)?;
         self.reserve(length + 2)?;
         self.output
             .extend_from_slice(&(length as u16).to_be_bytes());
@@ -186,17 +176,7 @@ impl Writer<'_> {
 
     fn list(&mut self, values: &[Tag], depth: usize) -> Result<(), Error> {
         let child_depth = self.container(depth)?;
-        let mut raw_type = 0;
-        for value in values {
-            if matches!(value, Tag::End) {
-                return Err(Error::UnexpectedEnd);
-            }
-            if raw_type == 0 {
-                raw_type = value.id();
-            } else if raw_type != value.id() {
-                raw_type = 10;
-            }
-        }
+        let raw_type = list_element_type(values)?;
         self.byte(raw_type)?;
         self.length(values.len())?;
         for value in values {
@@ -216,4 +196,36 @@ impl Writer<'_> {
         }
         Ok(())
     }
+}
+
+pub(super) fn modified_utf8_len(value: &NbtString) -> Result<usize, Error> {
+    let mut length = 0usize;
+    for &unit in value.as_utf16() {
+        length = length
+            .checked_add(match unit {
+                1..=0x7f => 1,
+                0..=0x7ff => 2,
+                _ => 3,
+            })
+            .ok_or(Error::StringTooLong)?;
+        if length > u16::MAX as usize {
+            return Err(Error::StringTooLong);
+        }
+    }
+    Ok(length)
+}
+
+pub(super) fn list_element_type(values: &[Tag]) -> Result<u8, Error> {
+    let mut raw_type = 0;
+    for value in values {
+        if matches!(value, Tag::End) {
+            return Err(Error::UnexpectedEnd);
+        }
+        if raw_type == 0 {
+            raw_type = value.id();
+        } else if raw_type != value.id() {
+            raw_type = 10;
+        }
+    }
+    Ok(raw_type)
 }

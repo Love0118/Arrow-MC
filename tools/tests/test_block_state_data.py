@@ -57,6 +57,19 @@ class BlockStatePreparationTests(unittest.TestCase):
             "id": "minecraft:worldgen/biome", "entries": [
                 {"id": "minecraft:zeta", "protocol_id": 0},
                 {"id": "minecraft:alpha", "protocol_id": 1}]}])
+        # Static numeric order intentionally differs from Java block export order.
+        configuration.write_json(self.config_root / "static-domains.json", [
+            {"id": "minecraft:block", "entries": [
+                {"id": "minecraft:example", "protocol_id": 0},
+                {"id": "minecraft:air", "protocol_id": 1}]},
+            {"id": "minecraft:block_entity_type", "entries": [
+                {"id": "minecraft:furnace", "protocol_id": 0},
+                {"id": "minecraft:chest", "protocol_id": 1},
+                {"id": "minecraft:sign", "protocol_id": 2}]}])
+        configuration.write_json(self.config_root / "tags.json", [{
+            "id": "minecraft:block", "tags": [
+                {"id": "minecraft:blocks_motion_in_heightmap", "members": [0]},
+                {"id": "minecraft:blocks_motion_in_heightmap_no_leaves", "members": [0]}]}])
         self.manifest = {
             "format_version": 1, "minecraft_version": VERSION, "protocol": PROTOCOL,
             "configuration": "vanilla-only", "source_jar": self.source_jar,
@@ -112,10 +125,11 @@ class BlockStatePreparationTests(unittest.TestCase):
             output = self.prepare()
         java.assert_called_once()
         self.artifacts.assert_called_once_with(self.root, VERSION, self.lock)
-        self.assertEqual(output, self.root / "bootstrap" / (VERSION + "-block-states"))
+        self.assertEqual(output, self.root / "bootstrap" / (VERSION + "-block-states-v2"))
         self.assertEqual(configuration.read_json(output / "biomes.json"), [
             {"id": "minecraft:zeta", "protocol_id": 0}, {"id": "minecraft:alpha", "protocol_id": 1}])
         manifest = configuration.read_json(output / "manifest.json")
+        self.assertEqual(manifest["format_version"], 2)
         self.assertEqual(manifest["configuration_manifest_sha256"], self.trusted_digest)
         self.assertEqual(manifest["selected_packs"], self.manifest["selected_packs"])
         self.assertEqual(manifest["source_jar"], self.source_jar)
@@ -126,6 +140,17 @@ class BlockStatePreparationTests(unittest.TestCase):
                          configuration.digest_file(self.generator))
         self.assertFalse((output / "logs").exists())
         self.assertFalse(list(output.parent.glob(".block-states-*")))
+        blocks = configuration.read_json(output / "blocks.json")
+        self.assertEqual(len((output / "blocks.json").read_text(encoding="utf-8").splitlines()), 1)
+        self.assertEqual([block["heightmap_tags"] for block in blocks["blocks"]], [0, 3])
+        self.assertEqual(blocks["state_count"], 5)
+        self.assertEqual(blocks["state_flags"], [1, 0, 2, 3, 2])
+        self.assertEqual(blocks["blocks"][1]["states"], [3, 1, 4, 2])
+        self.assertEqual(blocks["blocks"][1]["default_state"], 4)
+        self.assertEqual(configuration.read_json(output / "block-entity-types.json"), [
+            {"id": "minecraft:furnace", "protocol_id": 0},
+            {"id": "minecraft:chest", "protocol_id": 1},
+            {"id": "minecraft:sign", "protocol_id": 2}])
 
     def test_missing_wrong_or_malformed_external_digest_is_rejected_before_java(self):
         for digest in (None, "", "trusted", "0" * 64, self.trusted_digest.upper()):
@@ -198,26 +223,117 @@ class BlockStatePreparationTests(unittest.TestCase):
                     self.prepare()
                 java.assert_not_called()
 
-    def test_biomes_are_parsed_from_the_exact_authenticated_registry_bytes(self):
+    def test_domains_and_tags_are_parsed_from_the_exact_authenticated_bytes(self):
         original_read = Path.read_bytes
-        registry_path = self.config_root / "registries.json"
+        mutations = {
+            "registries.json": lambda data: data[0]["entries"][0].update(id="minecraft:untrusted"),
+            "static-domains.json": lambda data: data[1]["entries"][0].update(id="minecraft:untrusted"),
+            "tags.json": lambda data: data[0]["tags"][0].update(members=[1]),
+        }
         replacements = []
 
         def replacing_read(path):
             contents = original_read(path)
-            if path == registry_path:
-                replacements.append(path)
-                self.change_json(self.config_root, "registries.json", lambda registries:
-                                 registries[0]["entries"][0].update(id="minecraft:untrusted"))
+            if path.parent == self.config_root and path.name in mutations:
+                replacements.append(path.name)
+                self.change_json(self.config_root, path.name, mutations[path.name])
             return contents
 
         with patch.object(Path, "read_bytes", replacing_read), \
                 patch.object(block_states.subprocess, "run", side_effect=self.fake_java):
             output = self.prepare()
         biomes = configuration.read_json(output / "biomes.json")
-        self.assertEqual(replacements, [registry_path])
-        self.assertEqual(configuration.read_json(registry_path)[0]["entries"][0]["id"], "minecraft:untrusted")
+        self.assertCountEqual(replacements, list(mutations))
+        self.assertEqual(configuration.read_json(self.config_root / "registries.json")[0]["entries"][0]["id"],
+                         "minecraft:untrusted")
+        self.assertEqual(configuration.read_json(self.config_root / "static-domains.json")[1]["entries"][0]["id"],
+                         "minecraft:untrusted")
+        self.assertEqual(configuration.read_json(self.config_root / "tags.json")[0]["tags"][0]["members"], [1])
         self.assertEqual(biomes[0], {"id": "minecraft:zeta", "protocol_id": 0})
+        self.assertEqual(configuration.read_json(output / "block-entity-types.json")[0]["id"], "minecraft:furnace")
+        self.assertEqual([block["heightmap_tags"] for block in configuration.read_json(output / "blocks.json")["blocks"]],
+                         [0, 3])
+
+    def test_heightmap_tag_bits_resolve_static_ids_independently_of_export_order(self):
+        for flags in range(4):
+            with self.subTest(flags=flags):
+                self.write_configuration()
+                for bit in range(2):
+                    self.change_json(self.config_root, "tags.json", lambda data:
+                                     data[0]["tags"][bit].update(members=[0] if flags & (1 << bit) else []))
+                self.trust_configuration(refresh_descriptors=True)
+                output = self.root / "bootstrap" / f"tag-bits-{flags}"
+                with patch.object(block_states.subprocess, "run", side_effect=self.fake_java):
+                    self.prepare(output=output)
+                blocks = configuration.read_json(output / "blocks.json")
+                self.assertEqual([(block["id"], block["heightmap_tags"]) for block in blocks["blocks"]],
+                                 [("minecraft:air", 0), ("minecraft:example", flags)])
+                self.assertEqual(blocks["state_flags"], [1, 0, 2, 3, 2])
+                self.assertEqual(blocks["blocks"][1]["states"], [3, 1, 4, 2])
+
+    def test_required_static_domains_reject_missing_names_duplicates_and_invalid_ids(self):
+        mutations = [lambda data: data.pop(0), lambda data: data.pop(1),
+                     lambda data: data[0].update(id="minecraft:wrong"),
+                     lambda data: data[1].update(entries=[]),
+                     lambda data: data.append(data[0].copy()),
+                     lambda data: data[0]["entries"][0].pop("id"),
+                     lambda data: data[0]["entries"][1].update(protocol_id=0),
+                     lambda data: data[1]["entries"][0].update(protocol_id=False),
+                     lambda data: data[1]["entries"][1].update(id="minecraft:furnace"),
+                     lambda data: data[1]["entries"][2].update(protocol_id=3)]
+        for index, mutation in enumerate(mutations):
+            with self.subTest(case=index):
+                self.write_configuration()
+                self.change_json(self.config_root, "static-domains.json", mutation)
+                self.trust_configuration(refresh_descriptors=True)
+                with patch.object(block_states.subprocess, "run") as java:
+                    with self.assertRaisesRegex(ValueError, "domain|Registry"):
+                        self.prepare()
+                    java.assert_not_called()
+
+    def test_required_heightmap_tags_reject_missing_wrong_domain_and_invalid_members(self):
+        mutations = [lambda data: data.clear(), lambda data: data.append(data[0].copy()),
+                     lambda data: data[0].update(id="minecraft:biome"),
+                     lambda data: data[0]["tags"].pop(),
+                     lambda data: data[0]["tags"][0].update(id="minecraft:wrong"),
+                     lambda data: data[0]["tags"].append(data[0]["tags"][0].copy()),
+                     lambda data: data[0]["tags"][0].update(members=[2]),
+                     lambda data: data[0]["tags"][0].update(members=[-1]),
+                     lambda data: data[0]["tags"][0].update(members=[False]),
+                     lambda data: data[0]["tags"][0].update(members=["minecraft:example"]),
+                     lambda data: data[0]["tags"][0].update(members=[0, 0]),
+                     lambda data: data[0]["tags"][0].pop("members")]
+        for index, mutation in enumerate(mutations):
+            with self.subTest(case=index):
+                self.write_configuration()
+                self.change_json(self.config_root, "tags.json", mutation)
+                self.trust_configuration(refresh_descriptors=True)
+                with patch.object(block_states.subprocess, "run") as java:
+                    with self.assertRaisesRegex(ValueError, "tag"):
+                        self.prepare()
+                    java.assert_not_called()
+
+    def test_exported_block_names_must_equal_the_authenticated_static_domain(self):
+        for extra in (False, True):
+            with self.subTest(extra=extra):
+                self.write_configuration()
+                mutation = (lambda data: data[0]["entries"].append({"id": "minecraft:extra", "protocol_id": 2})) \
+                    if extra else (lambda data: data[0]["entries"][0].update(id="minecraft:other"))
+                self.change_json(self.config_root, "static-domains.json", mutation)
+                self.trust_configuration(refresh_descriptors=True)
+                with patch.object(block_states.subprocess, "run", side_effect=self.fake_java):
+                    with self.assertRaisesRegex(ValueError, "Exported block names"):
+                        self.prepare()
+                self.assertEqual(list(self.config_root.parent.iterdir()), [self.config_root])
+
+    def test_schema_v2_default_preserves_existing_v1_bundle(self):
+        previous = self.config_root.parent / (VERSION + "-block-states")
+        previous.mkdir()
+        (previous / "manifest.json").write_text("preserved v1", encoding="utf-8")
+        with patch.object(block_states.subprocess, "run", side_effect=self.fake_java):
+            output = self.prepare()
+        self.assertEqual(configuration.read_json(output / "manifest.json")["format_version"], 2)
+        self.assertEqual((previous / "manifest.json").read_text(encoding="utf-8"), "preserved v1")
 
     def test_output_and_configuration_boundaries_preserve_existing_files(self):
         for output in (self.repository / "bulk", self.root / "sources" / VERSION,
@@ -275,7 +391,7 @@ class BlockStatePreparationTests(unittest.TestCase):
             with self.assertRaises(subprocess.CalledProcessError):
                 self.prepare()
         self.assertEqual(list(self.config_root.parent.iterdir()), [self.config_root])
-        destination = self.config_root.parent / (VERSION + "-block-states")
+        destination = self.config_root.parent / (VERSION + "-block-states-v2")
         def concurrent(command, **options):
             self.fake_java(command, **options)
             destination.mkdir()
@@ -298,7 +414,7 @@ class BlockStatePreparationTests(unittest.TestCase):
         with patch.object(sys, "argv", arguments), contextlib.redirect_stdout(stdout), \
                 patch.object(block_states.subprocess, "run", side_effect=self.fake_java):
             block_states.main()
-        output = self.config_root.parent / (VERSION + "-block-states")
+        output = self.config_root.parent / (VERSION + "-block-states-v2")
         digest = configuration.digest_file(output / "manifest.json")
         self.assertIn(f"Trusted block-state manifest SHA256: {digest}", stdout.getvalue())
         self.assertEqual({path.name for path in output.iterdir()}, {*block_states.JSON_FILES, "manifest.json"})

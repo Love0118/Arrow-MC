@@ -13,11 +13,13 @@ mod numeric;
 pub mod path;
 pub mod predicate;
 mod read;
+mod size;
 mod write;
 
 use std::fmt;
 
 pub use read::{read_named, read_network, read_network_accounted};
+pub use size::network_encoded_len;
 pub use write::{write_named, write_network};
 
 /// Java strings are UTF-16 code units, including unpaired surrogates.

@@ -4,6 +4,7 @@ use arrow_mc::{
     runtime::{CpuPool, CpuPoolConfig},
     server::configuration_data::parse_sha256,
     world::{
+        heightmap::{HeightmapKind, HeightmapSet},
         loading::{ChunkLoadingOwner, LoadDemand, LoadingLimits, LoadingReadOutcome},
         preparation::ChunkAddress,
         storage::{
@@ -90,6 +91,16 @@ fn main() -> Result<(), Box<dyn Error>> {
                 .resident(address)
                 .ok_or_else(|| io::Error::other("publication did not retain its chunk"))?;
             let draft = resident.draft();
+            let heightmaps = HeightmapSet::from_canonical(&owner, address, 6 * 512)?;
+            let mut heightmap_count = 0;
+            let mut heightmap_samples = [None; 6];
+            for kind in HeightmapKind::ALL {
+                if let Some(heightmap) = heightmaps.get(kind) {
+                    heightmap_count += 1;
+                    heightmap_samples[usize::from(kind.id())] =
+                        Some(heightmap.first_available(0, 0)?);
+                }
+            }
             let mut payload_bytes = 0;
             let mut sections = 0;
             for y in i32::from(height.min_section())..=i32::from(height.max_section()) {
@@ -114,6 +125,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                     "resident_requested_backing_bytes":resident.retained_bytes(),
                     "resident_budget_used_bytes":owner.stats().resident_bytes,
                     "owner_metadata_bytes":owner.stats().metadata_bytes,
+                    "heightmap_count":heightmap_count,
+                    "heightmap_heap_bytes":heightmaps.heap_bytes(),
+                    "heightmap_first_available_at_0_0_by_type_id":heightmap_samples,
                     "scope":"one canonical chunk and shared CPU section encoding; no spawn/lighting/player readiness or RSS claim"
                 })
             );

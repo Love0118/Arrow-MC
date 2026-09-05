@@ -301,7 +301,7 @@ fn independent_anchors_reject_reauthored_and_corrupted_files() {
 fn rejects_inconsistent_manifest_metadata_and_file_descriptors() {
     let mutations: [FileMutation; 20] = [
         ("format", "manifest.json", |v| {
-            v["format_version"] = json!(2)
+            v["format_version"] = json!(1)
         }),
         ("version", "manifest.json", |v| {
             v["minecraft_version"] = json!("26.4")
@@ -482,6 +482,10 @@ fn enforces_independent_file_allocation_and_domain_budgets() {
             biomes: 1,
             ..RegistryLoadLimits::default()
         },
+        RegistryLoadLimits {
+            block_entity_types: 1,
+            ..RegistryLoadLimits::default()
+        },
     ] {
         assert!(fixture.rejects(limits));
     }
@@ -491,4 +495,93 @@ fn enforces_independent_file_allocation_and_domain_budgets() {
         biomes: 2,
         ..RegistryLoadLimits::default()
     }));
+}
+
+#[test]
+fn all_heightmap_predicates_use_independent_tags_air_and_fluid() {
+    // Enumerate every allowed flag/tag combination. In particular, a custom
+    // motion tag on air affects the predicate, not literal-air prime skipping.
+    for tags in 0u8..4 {
+        for physical in 0u8..4 {
+            let mut fixture = Fixture::new();
+            fixture.edit("blocks.json", |data| {
+                data["blocks"][0]["heightmap_tags"] = json!(tags);
+                data["blocks"][1]["heightmap_tags"] = json!(tags);
+                for id in 1..5 {
+                    data["state_flags"][id] = json!(physical);
+                }
+            });
+            let snapshot = fixture.load();
+            let surface = if physical & 1 == 0 { 3 } else { 0 };
+            let floor = if tags & 1 != 0 { 12 } else { 0 };
+            let motion = if tags & 1 != 0 || physical & 2 != 0 {
+                16
+            } else {
+                0
+            };
+            let no_leaves = if tags & 2 != 0 || physical & 2 != 0 {
+                32
+            } else {
+                0
+            };
+            assert_eq!(
+                snapshot.heightmap_mask(1),
+                Some(surface | floor | motion | no_leaves)
+            );
+            assert_eq!(snapshot.state_flags(1).unwrap().is_air, physical & 1 != 0);
+            assert_eq!(
+                snapshot.state_flags(1).unwrap().has_fluid,
+                physical & 2 != 0
+            );
+            assert_eq!(
+                snapshot.heightmap_mask(0),
+                Some(
+                    floor | if tags & 1 != 0 { 16 } else { 0 } | if tags & 2 != 0 { 32 } else { 0 }
+                )
+            );
+            assert_eq!(snapshot.heightmap_mask(5), None);
+        }
+    }
+}
+
+#[test]
+fn v2_requires_tag_membership_and_valid_block_entity_domain() {
+    for tags in [json!(-1), json!(4), json!(true), Value::Null] {
+        let mut fixture = Fixture::new();
+        fixture.edit("blocks.json", |data| {
+            data["blocks"][1]["heightmap_tags"] = tags
+        });
+        assert!(fixture.rejects(RegistryLoadLimits::default()));
+    }
+    let mut fixture = Fixture::new();
+    fixture.edit("blocks.json", |data| {
+        data["blocks"][1]
+            .as_object_mut()
+            .unwrap()
+            .remove("heightmap_tags");
+    });
+    assert!(fixture.rejects(RegistryLoadLimits::default()));
+    for domain in [
+        json!([]),
+        json!([{"id":"test:lamp","protocol_id":1}]),
+        json!([{"id":"test:lamp","protocol_id":0},{"id":"test:lamp","protocol_id":1}]),
+        json!([{"id":"Bad:ID","protocol_id":0}]),
+    ] {
+        let mut fixture = Fixture::new();
+        fixture.edit("block-entity-types.json", |data| *data = domain);
+        assert!(fixture.rejects(RegistryLoadLimits::default()));
+    }
+    let snapshot = Fixture::new().load();
+    assert_eq!(snapshot.block_entity_type_count(), 2);
+    assert_eq!(snapshot.block_entity_type_id(&"chest".into()), Some(1));
+    assert_eq!(snapshot.block_entity_type_id(&":chest".into()), Some(1));
+    assert_eq!(snapshot.block_entity_type_id(&"test:lamp".into()), Some(0));
+    assert_eq!(
+        snapshot.block_entity_type_id(&"minecraft:absent".into()),
+        None
+    );
+    assert_eq!(
+        snapshot.block_entity_type_id(&NbtString::from_utf16(vec![0xd800])),
+        None
+    );
 }

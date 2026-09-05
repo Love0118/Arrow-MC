@@ -23,6 +23,24 @@ Tokio1.53.1·serde_json1.0.151·flate2 1.1.10(zlib-rs)·sha2 0.10.9와 OpenSSL0.
 현재 고정 외부 의존성129개의 [원문 의존성 고지](../third_party/rust/README.md)를 수집·검사했다.
 이전의 외부 의존성0개는 아래 초기 데이터 기반 snapshot에 해당하며 현재 서버 package 전체의 수치가 아니다.
 
+## Heightmap·시야·chunk packet 추가
+
+[여섯 heightmap·전체 view2..32·chunk/light wire](chunk-wire-heightmap-view.md)를 구현했다.
+registry·heightmap·view·packet의 구현 에이전트와 좁은 NBT sizing 소비자 작업을 병행했으며,
+정확성 및 최적화·추상화 두 독립 리뷰가 마지막 조합까지 검수했다.
+실제 TCP 시험은 section bytes→chunk packet→sender queue→공유 CPU transport→socket과 control 순서를 검증한다.
+이는 실제 world producer·light fence·Play 상태 활성화를 대신하지 않는다.
+
+Windows 전체 debug521/release521통과(각선택29제외), all-target Clippy·format과 Python57개 중55통과/2제외를 확인했다.
+새 native CI는 확인 중이다. 실제 Java 대조는 view6,182행, heightmap70snapshots 및 모든35,723predicate,
+chunk packet78사례와231byte golden이다. v2 registry의 독립 hash로 이전72개 chunk 저장 oracle도 다시 통과했다.
+실제 inspector에서 heightmap4개/1,184bytes와24sections/192bytes를 확인했다.
+
+새 runtime dependency나 crate는 없고, registry의 tag 판정은 기존 state flag byte에 통합했다.
+원본 소스·JAR·생성된 bulk Mojang 데이터는 로컬 참조에 남기고 독립 API 호출 helper와 검증 코드만 배포한다.
+기존 native/Rust artifact가 있는 로컬 cache에서 이번 all-target compile은 debug26.53s/release34.06s였다.
+이는 빈 target의 최초 빌드나 속도 향상 측정이 아니다. 로그와 집계는 로컬 `Roadmap/reviews/heightmap-view-packet-build-validation.json`에 있다.
+
 ## 로드된 청크 owner·chunk sender 추가
 
 [청크 owner](chunk-loading-owner.md)는 현재 수요와 실제 읽기/준비 결과를 owner identity로 연결하고,
@@ -31,14 +49,17 @@ Tokio1.53.1·serde_json1.0.151·flate2 1.1.10(zlib-rs)·sha2 0.10.9와 OpenSSL0.
 구현 에이전트 두 역할과 정확성·최적화 독립 리뷰 두 역할이 최종 코드까지 확인했다.
 
 일반 owner12·내부3·sender14개, 실제 sender Java 선택173·ACK/tick475개 관측을 통과했다.
-전체 Windows debug481/release481통과(각선택26제외), all-target Clippy와 format을 통과했다. 이 묶음의 native CI는 확인 중이다.
+commit `8cccaa3`의 [CI run33961682865](https://github.com/Love0118/Arrow-MC/actions/runs/33961682865)에서
+네 native 플랫폼 모두 architecture·format·Clippy·debug481/release481(각선택26제외)와 tooling을 통과했다.
+Windows 로컬 동일 전체 검증도 통과했다.
 실제 inspect_chunk는 공식 registry·직접 만든 Anvil 파일에서 canonical24sections/192bytes를 준비했다.
 raw 저장 읽기·canonical resident·현재 game send-ready를 구분하며, 실제 월드 활성화·Play socket은 아직 연결하지 않았다.
 
 반복 CI의 native dependency 재빌드 비용을 줄이기 위해 공식 actions/cache를 고정 SHA로 사용한다.
 native runner/architecture/target·host image·toolchain·lock·manifest·native helper·workflow 설정이 같을 때만 재사용한다.
 모든 검사는 항상 실행하고 cache miss의 성공한 job에서 `cargo clean --locked --package arrow-mc`로 Arrow 산출물을 제거한 뒤
-의존성만 보존한다. 다른 key로의 fallback은 사용하지 않는다. 최초 저장/적중 시간과 크기는 아직 측정 전이므로 개선 수치를 주장하지 않는다.
+의존성만 보존한다. 다른 key로의 fallback은 사용하지 않는다. 최초 네 플랫폼 cache miss·정리·저장이 모두 성공했고,
+저장된 캐시4개의 합계는1,649,632,556bytes였다. 복원 성능은 아직 측정 전이므로 속도 개선을 주장하지 않는다.
 workflow는 SHA를 검증한 actionlint1.7.12로 YAML·표현식·Action 입력을 확인했다. 외부 shellcheck/pyflakes는 사용하지 않았다.
 이번 로컬 all-target compile 시간은 debug21.80s/release38.32s였다. 기존 native/Rust artifact가 있는 cache의 증분 값이며
 최초 빌드나 성능 향상 수치가 아니다. 새 runtime 의존성이나 crate 분리는 없다.

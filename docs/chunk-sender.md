@@ -1,8 +1,9 @@
 # 청크 후보 선택과 전송 소유권
 
 `server::chunk_sender`는 Vanilla `PlayerChunkSender`의 pending 후보, f32 quota·ACK와 순서 있는 delivery queue를 구현한다.
-실제 Play socket이나 chunk packet encoder에는 아직 연결하지 않았다. `Start`·`Finish`·`Forget`은 typed 전송 의도이며,
-`Data`는 호출자가 공급한 완전한 packet bytes다. 빈 청크 본문을 만들어 기능 완료를 대신하지 않는다.
+실제 server의 Play 상태에는 아직 연결하지 않았다. `Start`·`Finish`·`Forget`은 typed 전송 의도이며,
+`Data`는 호출자가 공급한 완전한 packet bytes다. 이후 [chunk packet encoder](chunk-wire-heightmap-view.md)를 추가해
+queue intent를 실제 bytes로 변환하고 기존 transport를 통한 TCP 순서를 검증했다. 빈 청크 본문으로 기능을 대신하지 않는다.
 
 ## 선택과 ACK
 
@@ -53,4 +54,5 @@ cargo test --locked --test server_chunk_sender_java_oracle -- --ignored --nocapt
 ```
 
 공식 oracle는 공개 메서드와 번들 dependency API에 직접 만든 입력을 주고, 도달 가능한 rate 상태 일부를 명시적으로 구성한다.
-실제 server world/TCP의 end-to-end 동작이나 처리량 개선을 이 검증으로 주장하지 않는다. view/ticket engine과 chunk packet codec·transport 연결은 후속 단계다.
+이 sender oracle만으로 실제 server world/TCP의 end-to-end 동작이나 처리량 개선을 주장하지 않는다.
+별도 packet/transport TCP 조합 시험은 추가했고, 실제 view/ticket coordinator·준비된 world producer·Play 상태 연결은 남아 있다.

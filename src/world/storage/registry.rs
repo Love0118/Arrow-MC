@@ -16,7 +16,12 @@ use std::path::{Path, PathBuf};
 
 const VERSION: &str = "26.3-pre-2";
 const PROTOCOL: u32 = 1_073_742_158;
-const FILES: [&str; 3] = ["blocks.json", "biomes.json", "export-metadata.json"];
+const FILES: [&str; 4] = [
+    "blocks.json",
+    "biomes.json",
+    "export-metadata.json",
+    "block-entity-types.json",
+];
 
 #[derive(Clone, Copy, Debug)]
 pub struct ExpectedRegistryReference {
@@ -38,6 +43,7 @@ pub struct RegistryLoadLimits {
     pub blocks: usize,
     pub states: usize,
     pub biomes: usize,
+    pub block_entity_types: usize,
 }
 impl Default for RegistryLoadLimits {
     fn default() -> Self {
@@ -48,6 +54,7 @@ impl Default for RegistryLoadLimits {
             blocks: 65536,
             states: 1 << 20,
             biomes: 65536,
+            block_entity_types: 4096,
         }
     }
 }
@@ -100,6 +107,8 @@ struct Property {
 #[serde(deny_unknown_fields)]
 struct Block {
     id: String,
+    /// Bound to the manifest's configuration tags: motion and motion-no-leaves.
+    heightmap_tags: u8,
     default_state: u32,
     properties: Vec<Property>,
     /// Complete mixed-radix property product, last property varying fastest.
@@ -114,7 +123,7 @@ struct Blocks {
 }
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Biome {
+struct NamedId {
     id: String,
     protocol_id: u32,
 }
@@ -159,7 +168,8 @@ struct Metadata {
 pub struct ChunkRegistrySnapshot {
     blocks: Vec<Block>,
     state_flags: Vec<u8>,
-    biomes: Vec<Biome>,
+    biomes: Vec<NamedId>,
+    block_entity_types: Vec<NamedId>,
     blocks_domain: Registry,
     biomes_domain: Registry,
     air: u32,
@@ -184,7 +194,7 @@ impl ChunkRegistrySnapshot {
             return Err(Error::DigestMismatch("manifest.json".into()));
         }
         let manifest: Manifest = json(&manifest_bytes)?;
-        if manifest.format_version != 1
+        if manifest.format_version != 2
             || manifest.minecraft_version != VERSION
             || manifest.protocol != PROTOCOL
         {
@@ -209,7 +219,7 @@ impl ChunkRegistrySnapshot {
                 .iter()
                 .any(|name| manifest.files.iter().filter(|d| d.path == *name).count() != 1)
         {
-            return Err(invalid("expected exactly the three registry data files"));
+            return Err(invalid("expected exactly the four registry data files"));
         }
         let descriptor = |name: &str| {
             manifest
@@ -222,9 +232,11 @@ impl ChunkRegistrySnapshot {
         let mut data: Blocks = json(&block_bytes)?;
         drop(block_bytes);
         let biome_bytes = reader.read(FILES[1], Some(descriptor(FILES[1])))?;
-        let mut biomes: Vec<Biome> = json(&biome_bytes)?;
+        let mut biomes: Vec<NamedId> = json(&biome_bytes)?;
         drop(biome_bytes);
         let metadata: Metadata = json(&reader.read(FILES[2], Some(descriptor(FILES[2])))?)?;
+        let mut block_entity_types: Vec<NamedId> =
+            json(&reader.read(FILES[3], Some(descriptor(FILES[3])))?)?;
         verify_jar(&metadata.source_jar, expected)?;
         if metadata.minecraft_version != VERSION
             || metadata.protocol != PROTOCOL
@@ -238,6 +250,9 @@ impl ChunkRegistrySnapshot {
             || data.state_count as usize > limits.states
             || biomes.is_empty()
             || biomes.len() > limits.biomes
+            || block_entity_types.is_empty()
+            || block_entity_types.len() > limits.block_entity_types
+            || block_entity_types.len() > i32::MAX as usize
         {
             return Err(Error::Limit("registry entry counts"));
         }
@@ -258,8 +273,8 @@ impl ChunkRegistrySnapshot {
         seen.resize(data.state_count as usize, false);
         let mut value_names = Vec::new();
         for block in &data.blocks {
-            if !identifier(&block.id) {
-                return Err(invalid("invalid block identifier"));
+            if !identifier(&block.id) || block.heightmap_tags > 3 {
+                return Err(invalid("invalid block identifier or heightmap tags"));
             }
             let mut combinations = 1usize;
             let mut default_ordinal = 0usize;
@@ -307,6 +322,7 @@ impl ChunkRegistrySnapshot {
                 if std::mem::replace(slot, true) {
                     return Err(invalid("duplicate global state ID"));
                 }
+                data.state_flags[id as usize] |= block.heightmap_tags << 2;
             }
         }
         if seen.iter().any(|&present| !present) {
@@ -316,22 +332,15 @@ impl ChunkRegistrySnapshot {
         if data.blocks.windows(2).any(|pair| pair[0].id == pair[1].id) {
             return Err(invalid("duplicate block identifier"));
         }
-        for (index, biome) in biomes.iter().enumerate() {
-            if !identifier(&biome.id) || biome.protocol_id as usize != index {
-                return Err(invalid("invalid biome identifier or ordered ID"));
-            }
-        }
-        biomes.sort_unstable_by(|a, b| a.id.cmp(&b.id));
-        if biomes.windows(2).any(|pair| pair[0].id == pair[1].id) {
-            return Err(invalid("duplicate biome identifier"));
-        }
+        validate_named_ids(&mut biomes)?;
+        validate_named_ids(&mut block_entity_types)?;
         let air_block = data
             .blocks
             .iter()
             .find(|block| block.id == "minecraft:air")
             .ok_or_else(|| invalid("missing air block"))?;
         let air = air_block.default_state;
-        if !air_block.properties.is_empty() || data.state_flags[air as usize] != 1 {
+        if !air_block.properties.is_empty() || data.state_flags[air as usize] & 3 != 1 {
             return Err(invalid("invalid air state"));
         }
         let plains = biomes
@@ -343,6 +352,7 @@ impl ChunkRegistrySnapshot {
             blocks: data.blocks,
             state_flags: data.state_flags,
             biomes,
+            block_entity_types,
             blocks_domain,
             biomes_domain,
             air,
@@ -384,6 +394,31 @@ impl ChunkRegistrySnapshot {
             is_air: flags & 1 != 0,
             has_fluid: flags & 2 != 0,
         })
+    }
+
+    /// Predicate bits in current Heightmap.Types ID order (0..5). Priming's
+    /// separate literal Blocks.AIR skip is the kernel's responsibility.
+    pub fn heightmap_mask(&self, id: u32) -> Option<u8> {
+        self.state_flags.get(id as usize).map(|&flags| {
+            let surface = if flags & 1 == 0 { 0b000011 } else { 0 };
+            let floor = if flags & 4 != 0 { 0b001100 } else { 0 };
+            let motion = if flags & (4 | 2) != 0 { 0b010000 } else { 0 };
+            let no_leaves = if flags & (8 | 2) != 0 { 0b100000 } else { 0 };
+            surface | floor | motion | no_leaves
+        })
+    }
+
+    pub fn block_entity_type_count(&self) -> u32 {
+        self.block_entity_types.len() as u32
+    }
+
+    /// Resolves the network type domain only; disk NBT is not an update tag.
+    pub fn block_entity_type_id(&self, name: &NbtString) -> Option<u32> {
+        let (prefix, units) = identifier_units(name);
+        self.block_entity_types
+            .binary_search_by(|entry| compare_identifier(&entry.id, prefix, units))
+            .ok()
+            .map(|index| self.block_entity_types[index].protocol_id)
     }
 
     /// Current BlockState.CODEC string default or lowercase `{id,properties}`.
@@ -489,6 +524,18 @@ impl ChunkRegistrySnapshot {
 fn compare_ascii(ascii: &str, units: &[u16]) -> Ordering {
     ascii.bytes().map(u16::from).cmp(units.iter().copied())
 }
+fn validate_named_ids(values: &mut [NamedId]) -> Result<(), Error> {
+    for (index, value) in values.iter().enumerate() {
+        if !identifier(&value.id) || value.protocol_id as usize != index {
+            return Err(invalid("invalid registry identifier or ordered ID"));
+        }
+    }
+    values.sort_unstable_by(|a, b| a.id.cmp(&b.id));
+    if values.windows(2).any(|pair| pair[0].id == pair[1].id) {
+        return Err(invalid("duplicate registry identifier"));
+    }
+    Ok(())
+}
 fn identifier_units(input: &NbtString) -> (&'static [u16], &[u16]) {
     const DEFAULT_PREFIX: &[u16] = &[109, 105, 110, 101, 99, 114, 97, 102, 116, 58];
     let units = input.as_utf16();
@@ -561,7 +608,7 @@ fn json<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T, Error> {
     serde_json::from_slice(bytes).map_err(|error| invalid(error.to_string()))
 }
 
-// Fixed three-file format: this reader deliberately has no registry/plugin
+// Fixed four-file format: this reader deliberately has no registry/plugin
 // discovery hooks. All JSON admission occurs before serde allocates its tables.
 struct Reader {
     root: PathBuf,
@@ -623,13 +670,18 @@ pub(crate) fn storage_test_snapshot() -> ChunkRegistrySnapshot {
     ChunkRegistrySnapshot {
         blocks: vec![Block {
             id: "minecraft:air".into(),
+            heightmap_tags: 0,
             default_state: 0,
             properties: Vec::new(),
             states: vec![0],
         }],
         state_flags: vec![1],
-        biomes: vec![Biome {
+        biomes: vec![NamedId {
             id: "minecraft:plains".into(),
+            protocol_id: 0,
+        }],
+        block_entity_types: vec![NamedId {
+            id: "test:entity".into(),
             protocol_id: 0,
         }],
         blocks_domain: Registry::new(1).unwrap(),

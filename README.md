@@ -9,10 +9,12 @@ Java 디컴파일본과 실제 실행 결과를 동작 기준으로 삼고, Pump
 검증된 snapshot을 지정하면 online 로그인·암호화·압축과 실제 registry/tag configuration 전송까지 수행합니다.
 현재 버전 Anvil 청크의 병렬 읽기·decode·resident 예산 전환과 block/fluid 예약 tick의 복원·영역 연산도 구현했습니다.
 청크 요청의 소유권 검증·canonical section 준비와 Vanilla 청크 후보/ACK·전송 batch 소유자도 추가했습니다.
+여섯 heightmap, 실제 시야 경계·차이 계산, chunk/light·control packet 인코딩과 실제 TCP 순서 검증도 추가했습니다.
 **실제 spawn 준비와 Play·월드 생성·게임 tick 실행은 아직 미완료**입니다.
 현재 실행 방법과 검증 경계는 [로그인·configuration·예약 tick](docs/login-configuration.md)에 기록합니다.
 [청크 저장 로딩](docs/chunk-storage.md)과 [예약 tick 복원](docs/saved-ticks.md)에 추가 경로와 검증 범위를 기록합니다.
 [로드된 청크 소유자](docs/chunk-loading-owner.md)와 [청크 전송 준비](docs/chunk-sender.md)는 활성화·실제 socket 연결의 남은 경계도 구분합니다.
+[Heightmap·시야·chunk wire](docs/chunk-wire-heightmap-view.md)에 현재26.3 형식과 실행 근거를 정리했습니다.
 [설계 기준](docs/architecture.md)과 [Vanilla/Pumpkin 비교·최적화 계획](docs/optimization-plan.md)에 지원 범위,
 동기·비동기 실행 경계, 가져올 최적화와 직접 가져오지 않을 동작을 정리했습니다.
 

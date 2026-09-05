@@ -18,7 +18,7 @@ fn actual_official_registry_resolves_every_state_and_biome() {
             PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .parent()
                 .unwrap()
-                .join("Decompile/bootstrap/26.3-pre-2-block-states")
+                .join("Decompile/bootstrap/26.3-pre-2-block-states-v2")
         });
     // These defaults were recorded from trusted preparation stdout. Reprepared
     // bundles must supply their independently recorded digests, not read this file.
@@ -28,7 +28,7 @@ fn actual_official_registry_resolves_every_state_and_biome() {
     let expected = ExpectedRegistryReference {
         manifest_sha256: anchor(
             "ARROW_BLOCK_STATE_MANIFEST_SHA256",
-            "9e40bbe9052b228ac350f819d101cf15317f574e51d26ff8dbfae6aac3eb69ba",
+            "ac40352daeef56d8a273116f9573d1684c0e13c96e5d93e485900b4a021c5557",
         ),
         configuration_manifest_sha256: anchor(
             "ARROW_CONFIGURATION_MANIFEST_SHA256",
@@ -46,6 +46,7 @@ fn actual_official_registry_resolves_every_state_and_biome() {
     assert_eq!(snapshot.state_count(), 35723);
     assert_eq!(snapshot.block_registry().bits(), 16);
     assert_eq!(snapshot.biome_count(), 67);
+    assert_eq!(snapshot.block_entity_type_count(), 49);
     assert_eq!(
         snapshot.configuration_manifest_sha256(),
         expected.configuration_manifest_sha256
@@ -83,6 +84,12 @@ fn actual_official_registry_resolves_every_state_and_biome() {
             let actual = snapshot.state_flags(expected_id).unwrap();
             assert_eq!(actual.is_air, flags & 1 != 0);
             assert_eq!(actual.has_fluid, flags & 2 != 0);
+            let tags = block["heightmap_tags"].as_u64().unwrap();
+            let expected_mask = (u8::from(flags & 1 == 0) * 3)
+                | (u8::from(tags & 1 != 0) * 12)
+                | (u8::from(tags & 1 != 0 || flags & 2 != 0) * 16)
+                | (u8::from(tags & 2 != 0 || flags & 2 != 0) * 32);
+            assert_eq!(snapshot.heightmap_mask(expected_id), Some(expected_mask));
             checked += 1;
         }
     }
@@ -93,5 +100,13 @@ fn actual_official_registry_resolves_every_state_and_biome() {
         let actual = snapshot.biome(&Tag::String(biome["id"].as_str().unwrap().into()));
         assert_eq!(actual.id, biome["protocol_id"].as_u64().unwrap() as u32);
         assert!(!actual.used_fallback);
+    }
+    let types: Value =
+        serde_json::from_slice(&fs::read(root.join("block-entity-types.json")).unwrap()).unwrap();
+    for entry in types.as_array().unwrap() {
+        assert_eq!(
+            snapshot.block_entity_type_id(&entry["id"].as_str().unwrap().into()),
+            Some(entry["protocol_id"].as_u64().unwrap() as u32)
+        );
     }
 }
