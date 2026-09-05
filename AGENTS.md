@@ -32,11 +32,16 @@ Repository documentation is under `docs/`; the active task backlog is in the sib
 
 - Target Java Edition 26.3. Use the locked official preview until a 26.3 stable baseline
   is explicitly selected with the update workflow. Do not silently move to 26.4.
-- Build a new Rust implementation. Pumpkin is a source of individually evaluated logic
-  and optimizations, not the implementation's dependency or default behavior authority.
+- Inspect the pinned Pumpkin Rust implementation first when choosing an implementation
+  or resolving ambiguity. Evaluate its logic, completeness and performance; consult
+  Vanilla for missing, incorrect or version-specific behavior. Build an independent Rust server.
 - Follow `docs/architecture.md` and record each port in `../Roadmap/PORTING.md`.
-- Preserve Java numeric semantics, random streams, iteration order, state transitions,
-  and tick ordering before optimizing. Record intentional differences and measured gains.
+- Preserve game-relevant seed algorithms, random draw order, packet causality, state
+  transitions and tick ordering. Do not build JVM-operation emulation, HotSpot math
+  backends or support for accidental Java API behavior outside Minecraft consumers.
+  Characterize floating-point differences and investigate further when meaningful
+  gameplay/protocol impact warrants it; exact JVM last-bit matching is not a blanket gate.
+  Record intentional differences and measured gains.
 - Keep upstream source references, revision and attribution for any copied implementation.
 - Do not mark a component complete based only on stub compilation or decompiler success.
 
