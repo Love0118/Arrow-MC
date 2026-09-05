@@ -2,7 +2,7 @@
 
 `26.3-pre-2`의 실제 TCP 로그인에서 RSA 응답 검증, online session 조회, 암호화·압축 전환,
 LoginAcknowledged와 configuration registry/tag 전송까지 연결했다. **현재 configuration은 실제 spawn 준비를 기다린다.**
-월드 생성·저장 청크 load·lighting·player publication이 없으므로 FinishConfiguration/Play를 완료하지 않는다.
+저장 청크를 live world에 연결하는 단계와 월드 생성·lighting·player publication이 남아 있어 FinishConfiguration/Play를 완료하지 않는다.
 아이템 기반 게이트와 전체 Vanilla 목표는 계속 진행 중이다.
 
 ## 실행
@@ -80,7 +80,7 @@ profile은 소유권을 이동하고 이미 보낸 Hello/LoginFinished buffer는
 HTTP TLS는 Windows Schannel, Apple Security Framework, Linux OpenSSL이며 protocol crypto는 네 플랫폼에서 vendored OpenSSL을 사용한다.
 Rust `rsa` crate의 미해결 private-key timing 문제 때문에 이를 채택하지 않았다.
 [RustSec 근거](https://rustsec.org/advisories/RUSTSEC-2023-0071.html)와 [EVP 동작](https://docs.openssl.org/3.5/man3/EVP_PKEY_decrypt/)을 확인했다.
-원본 고지는 embedded OpenSSL을 포함해 [127개 lock package](../third_party/rust/README.md)에 보존한다.
+원본 고지는 embedded OpenSSL과 저장 압축을 포함한 [고정 외부 의존성129개](../third_party/rust/README.md)에 보존한다.
 
 ## 예약 block/fluid tick
 
@@ -90,14 +90,15 @@ Rust `rsa` crate의 미해결 private-key timing 문제 때문에 이를 채택�
 수집을 끝낸 뒤 실행할 항목을 소유자에게 하나씩 반환하므로 같은 phase에 새로 예약한 due-now 항목을 몰래 실행하지 않는다.
 block 단계에서 예약한 fluid 항목은 뒤의 fluid 수집에 포함될 수 있다.
 
-청크 등록·tick 가능 상태·queue/선택 목록 예산을 검사하고, 한 phase의 기본 실행 상한 65,536을 보존한다.
-공간 부족 시 명시적으로 실패하며 tick을 조용히 버리지 않는다. hash는 중복 확인에만 쓰고 실행 순서로 쓰지 않는다.
+청크 등록·tick 가능 상태·queue/선택 목록 예산을 검사하고, 한 phase의 최대 실행 상한 65,536을 보존한다.
+공간 부족 시 명시적으로 실패하며 tick을 조용히 버리지 않는다. 중복 검사용 hash의 순서를 실행 순서로 사용하지 않는다.
+완전 동률에서 관찰되는 Java heap과 scheduling map의 이력은 별도 private 자료구조로 보존한다.
 직접 동기 queue가 실제 block/fluid 행동이나 병렬 game tick을 대신하는 것은 아니다.
-SavedTick 복원·완전 동률의 Java heap/hash-map 역사·영역 clear/copy는 필수 후속 구현이다.
-좌표 정렬로 동률 결과를 임의로 바꾸지 않는다. 상세 작업은 로컬 `Roadmap/research/scheduled-tick-oracle/compatibility-next.md`에 있다.
+SavedTick 복원·완전 동률의 heap/map 이력·영역 clear/copy를 추가했으며 [복원 구현 문서](saved-ticks.md)에 경계를 기록한다.
+실제 chunk NBT의 tick type codec·durable 저장과 block/fluid 행동 연결은 남아 있다.
 
-실제 JAR의 332개 trace와 16개 queue 테스트를 대조했다. 동기 schedule/collect/dispatch 단일 Windows 측정에서
+초기 live 구현은 실제 JAR의 332개 trace와 16개 queue 테스트를 대조했다. 당시 동기 schedule/collect/dispatch 단일 Windows 측정에서
 256/4,096/65,536개 작업의 p50은 약 28.5 µs/571.9 µs/11.65 ms였으며 마지막 크기의 보관 backing은 15,775,744 bytes였다.
-독립 리뷰어의 같은 범위 측정은 마지막 크기 약 13.95 ms였다. 이 수치는 게임 TPS·병렬 tick 가속을 입증하지 않는다.
+독립 리뷰어의 같은 범위 측정은 마지막 크기 약 13.95 ms였다. 이 값은 복원 기능 추가 전 측정이며 현재 구현의 비용이나 게임 TPS·병렬 tick 가속을 입증하지 않는다.
 
 전체 테스트·native CI와 독립 검수 결과는 [구현 상태](foundation-status.md)에 기록한다.

@@ -3,7 +3,8 @@
 ## Rust runtime dependencies
 
 The server uses pinned Tokio and serde_json packages, flate2 with the zlib-rs
-backend for protocol compression, and sha2 for local snapshot integrity checks.
+backend for protocol and storage compression, and sha2 for local snapshot integrity checks.
+Storage also uses the safe decoder in lz4_flex and the xxh32 feature of xxhash-rust.
 It also uses OpenSSL for protocol crypto, minimal native-TLS reqwest for session
 verification, and serde for bounded typed authentication responses. The resolved
 dependencies have individual notices in [third_party/rust/README.md](third_party/rust/README.md).
@@ -31,6 +32,6 @@ Source URLs, checksums and regeneration instructions are recorded in
 No Minecraft JAR, decompiled Java implementation, Pumpkin module, or generated
 Minecraft asset/registry dump is bundled by this repository. Local reference
 and verification material is managed separately in the workspace.
-The independently authored Java helper in `tools/oracles/ExportConfigurationData.java`
-invokes official APIs from a separately acquired local JAR. Its generated output
+The independently authored Java helpers `tools/oracles/ExportConfigurationData.java`
+and `tools/oracles/ExportBlockStateData.java` invoke official APIs from a separately acquired local JAR. Their generated output
 stays under the sibling `Decompile/bootstrap/` directory and is not bundled here.

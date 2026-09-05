@@ -17,7 +17,7 @@ mod write;
 
 use std::fmt;
 
-pub use read::{read_named, read_network};
+pub use read::{read_named, read_network, read_network_accounted};
 pub use write::{write_named, write_network};
 
 /// Java strings are UTF-16 code units, including unpaired surrogates.

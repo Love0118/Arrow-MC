@@ -14,10 +14,15 @@ use std::thread::{self, JoinHandle};
 use crate::world::section::{self, Registry, SectionCounts};
 
 mod packet;
+mod storage;
 pub use packet::{
     LOGIN_KEY_JOB_BUFFER_BYTES, LoginKeyJobError, LoginKeyOutput, LoginKeyTask, PendingLoginKey,
 };
 pub use packet::{PacketJobError, PacketJobOutput, PacketOperation, PacketTask, PendingPacket};
+pub use storage::{
+    AdoptionError, ChunkDecodeOutput, ChunkDecodeTask, ChunkReadKey, PendingChunkDecode,
+    ResidentChunk, ResidentChunkBudget, ResidentStats,
+};
 
 pub const SECTION_INPUT_BYTES: usize = (4096 + 64) * size_of::<u32>();
 pub const SECTION_JOB_BUFFER_BYTES: usize =
@@ -141,6 +146,7 @@ enum Job {
     Section(PrepareSection),
     Packet(packet::PacketJob),
     VerifyLoginKey(packet::LoginKeyJob),
+    DecodeChunk(storage::DecodeChunk),
 }
 
 /// Field order is deliberate: payloads are freed before the lease returns their
@@ -458,6 +464,7 @@ fn work(shared: Arc<Shared>) {
     // Lazily initialized once per worker. Backend state is provisioned worker
     // overhead, separately bounded by worker count, not a per-connection cache.
     let mut compression = None;
+    let mut storage_decoder = None;
     loop {
         let job = {
             let mut state = lock(&shared.state);
@@ -481,6 +488,7 @@ fn work(shared: Arc<Shared>) {
             Job::Section(job) => run_section(job, &shared),
             Job::Packet(job) => packet::run(job, &mut compression, &shared),
             Job::VerifyLoginKey(job) => packet::verify_login_key(job, &shared),
+            Job::DecodeChunk(job) => storage::decode_chunk(job, &mut storage_decoder, &shared),
         }
     }
 }
@@ -558,7 +566,7 @@ pub(crate) struct TestGate {
 
 #[cfg(test)]
 impl TestGate {
-    fn block(&self) {
+    pub(crate) fn block(&self) {
         self.started.send(()).unwrap();
         let mut released = lock(&self.released);
         while !*released {

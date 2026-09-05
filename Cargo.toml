@@ -8,12 +8,14 @@ description = "Minecraft Java Edition server foundations for Arrow MC"
 
 [dependencies]
 flate2 = { version = "=1.1.10", default-features = false, features = ["zlib-rs"] }
+lz4_flex = { version = "=0.14.0", default-features = false, features = ["safe-decode", "checked-decode"] }
 openssl = { version = "=0.10.81", features = ["vendored"] }
 reqwest = { version = "=0.13.4", default-features = false, features = ["native-tls-no-alpn"] }
 serde = { version = "=1.0.228", default-features = false, features = ["std", "derive"] }
 serde_json = "=1.0.151"
 sha2 = { version = "=0.10.9", default-features = false, features = ["std"] }
 tokio = { version = "=1.53.1", default-features = false, features = ["rt-multi-thread", "net", "io-util", "time", "sync", "signal", "macros"] }
+xxhash-rust = { version = "=0.8.18", default-features = false, features = ["xxh32"] }
 
 [lints.rust]
 unsafe_code = "forbid"

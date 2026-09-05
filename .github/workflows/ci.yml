@@ -3,6 +3,13 @@ name: foundations
 on:
   push:
     branches: [beta, main]
+    # Documentation records do not require rebuilding vendored native crypto.
+    # Source, fixtures, tooling and license payload changes still run the matrix.
+    paths-ignore:
+      - 'docs/**'
+      - 'README.md'
+      - 'AGENTS.md'
+      - 'THIRD_PARTY_NOTICES.md'
   pull_request:
   workflow_dispatch:
 

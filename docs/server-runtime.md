@@ -28,7 +28,7 @@ deadline은 byte마다 초기화하지 않는다. 선언된 프레임과 응답 
 Tokio1.53.1의 net/io-util/time/sync/signal/rt-multi-thread/macros만 사용한다.
 `select!`는 shutdown·accept·task 완료를 명확히 다루기 위해 사용하며 자체 async polling framework를 만들지 않는다.
 serde_json1.0.151로 JSON escape를 처리하고 custom derive 모델을 추가하지 않는다.
-인증·native crypto까지 포함한 현재 Cargo lock은127개 registry package를 모든 플랫폼·선택 의존성까지 잠근다.
+인증·native crypto·저장 압축까지 포함한 현재 Cargo lock은129개 registry package를 모든 플랫폼·선택 의존성까지 잠근다.
 실제 컴파일 subset은 host와 feature에 따라 다르다.
 [원문 라이선스 고지](../third_party/rust/README.md)는 lock hash와 함께 보존한다.
 
@@ -55,6 +55,7 @@ single/indirect/direct 저장, palette 성장·repack·비정규 header/padding�
 ## 실제 병렬 작업과 메모리 수명
 
 `runtime::CpuPool`은 고정 수의 CPU thread가 실제 `prepare_section` 작업을 수행한다.
+같은 pool에 packet 압축·crypto와 [청크 저장 decode](chunk-storage.md)를 연결했다. 디스크 대기는 별도 제한된 I/O 경로에서 처리한다.
 임의 closure executor나 per-world pool을 제공하지 않는다. status 응답처럼 작은 I/O 작업을 이 pool에 보내지 않는다.
 
 1. `try_reserve_section`이 slot과 요청 backing bytes33,286을 먼저 확보한다.

@@ -4,6 +4,14 @@ use std::mem::size_of;
 /// Reads one network root. Unconsumed packet bytes remain in `input`.
 /// On failure `input` is unchanged and all partial decoded data is dropped.
 pub fn read_network(input: &mut &[u8], limits: Limits) -> Result<Tag, Error> {
+    read_network_accounted(input, limits).map(|(tag, _)| tag)
+}
+
+/// Reads a root and reports cumulative requested Vec backing bytes, including
+/// temporary/replacement capacities. This is a conservative retained-payload
+/// allowance for a storage owner, not allocator overhead or an RSS measurement.
+/// Errors preserve the input cursor, as with `read_network`.
+pub fn read_network_accounted(input: &mut &[u8], limits: Limits) -> Result<(Tag, usize), Error> {
     limits.validate()?;
     let mut reader = Reader::new(input, limits);
     let id = reader.byte()?;
@@ -13,7 +21,7 @@ pub fn read_network(input: &mut &[u8], limits: Limits) -> Result<Tag, Error> {
         reader.payload(id, 0)?
     };
     *input = reader.input;
-    Ok(tag)
+    Ok((tag, reader.allocation))
 }
 
 /// Reads a disk-style root type, modified UTF-8 name and payload. The root name

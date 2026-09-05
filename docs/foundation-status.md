@@ -9,7 +9,7 @@ packet compression·section 변경/완료 소유자·실제 configuration snapsh
 [접속 준비 범위](connection-preparation.md)에 구현·자원·남은 통합 경계를 기록했다.
 [로그인·configuration·예약 tick](login-configuration.md)에는 이번 실제 접속 경로와 실행 방법이 있다.
 로그인 인증부터 configuration까지 연결했고, Play·spawn·월드 생성·게임 tick 실행은 남아 있다.
-현재 로컬 전체 debug/release332개가 통과했고, Clippy·format을 통과했다. 선택 검증16개는 기본 실행에서 제외한다.
+직전 로그인 묶음은 로컬 전체 debug/release332개와 Clippy·format을 통과했다. 당시 선택 검증16개는 기본 실행에서 제외했다.
 서버 실제 TCP/CLI12개·section18개·runtime13개와 독립 검수, 공식 codec/UTF-8/section 대조를 포함한다.
 
 commit `7a3e90e`의 [CI run33953216241](https://github.com/Love0118/Arrow-MC/actions/runs/33953216241)에서 네 native 플랫폼
@@ -18,9 +18,33 @@ lock 기반 의존성 고지 검사도 성공했다. 최초 `d86860f`는 Unix CL
 Windows 전용 scope로 수정해 재검증했다. 실행·section 병렬 준비의 성공이며 로그인·게임플레이 완성은 아니다.
 
 Tokio1.53.1·serde_json1.0.151·flate2 1.1.10(zlib-rs)·sha2 0.10.9와 OpenSSL0.10.81·reqwest0.13.4·serde1.0.228을 고정한다.
-단일 package의 library+binary를 유지하고 section·compression·큰 cipher body·RSA가 같은 고정 pool을 공유한다.
-모든 lock package127개의 [원문 의존성 고지](../third_party/rust/README.md)를 수집·검사했다.
+단일 package의 library+binary를 유지하고 section·compression·큰 cipher body·RSA·청크 저장 decode가 같은 고정 pool을 공유한다.
+저장 압축의 최소 기능 lz4_flex0.14.0·xxhash-rust0.8.18을 추가했다.
+현재 고정 외부 의존성129개의 [원문 의존성 고지](../third_party/rust/README.md)를 수집·검사했다.
 이전의 외부 의존성0개는 아래 초기 데이터 기반 snapshot에 해당하며 현재 서버 package 전체의 수치가 아니다.
+
+## 현재 청크 저장 로딩·예약 tick 복원
+
+[Anvil 로딩](chunk-storage.md)과 [SavedTick](saved-ticks.md)을 실제 구현했다. 저장·압축·registry·NBT 소비자·tick의
+구현 에이전트를 병행했고, 정확성 및 최적화·추상화 독립 리뷰 두 역할이 마지막 수정까지 확인했다.
+청크 저장은 DataVersion5018의 read-only 경로다. live world/ticket/lighting/spawn·Play, DFU, durable 저장은 남아 있다.
+SavedTick은 메모리상 복원/pack과 clear/copy를 제공하며 실제 NBT tick type codec·gameplay callback은 아직 연결하지 않았다.
+
+Windows x86_64 전체 debug452/release452통과(각선택24제외), all-target Clippy와 format을 통과했다. 새 native CI는 확인 중이다.
+Python52개 중50개 통과/2개 조건부 제외, 고정 외부 의존성129개 원문 고지 검사도 통과했다.
+공식 대조는 chunk72사례, 압축 NBT 소비988사례, live tick332·saved tick398·heap129관찰이며,
+registry는35,723 states·1,286 blocks·67 biomes 전체 ID/default/property를 조회했다. 기본 CI의 ignored와 별도 실제 실행 근거를 구분한다.
+
+리뷰에서 numeric collection의 codec 수용 누락, boxed Float/Double 변환, 실제 I/O 취소의 buffer 수명과
+중복 saved tick의 반복 lazy-set 재구축 비용을 확인하고 수정했다. pack/copy scratch는 실제 필요 시에만 승인한다.
+합성12청크의1/2/4-worker release 단일 측정은9.305/3.026/1.922ms, resident charge는동일3,172,656bytes였다.
+실제4개 job의 peak CPU 예약117,443,144bytes를 확인했다. TPS·RSS·cold-disk·전 플랫폼 성능 개선의 근거로 확대하지 않는다.
+실제 공식 registry를 사용한 inspect_chunk 예제로 파일→decode→resident→section bytes 경로도 확인했다.
+
+기존 native dependency와 일부 Rust artifact가 있는 cache에서 전체 target의 이번 Cargo compile 시간은
+debug23.55s/release29.04s였다. 이후 변경 없는 release binary build는 process0.324s(Cargo0.14s),
+실행 파일8,007,168bytes였다. 빈 target의 최초 컴파일·메모리 측정은 아니며 이전 최초 build와 속도 비교하지 않는다.
+원본 로그와 집계는 로컬 `Roadmap/reviews/storage-ticks-build-validation.json`에 있다.
 
 ## 실제 로그인·configuration·예약 tick 추가
 
@@ -152,7 +176,8 @@ timestamp 재컴파일0.349s, release 최초0.881s다. debug/release `rlib`는8,
 
 ## 남은 범위와 의도한 API 경계
 
-NBT binary와 SNBT는 전체 BASE-NBT가 아니다. NBT path·의미 연산/visitor/skip·압축·registry/typed schema·component·migration은 남아 있다.
+NBT binary와 SNBT는 전체 BASE-NBT가 아니다. path·numeric/predicate와 현재 chunk 소비자의 압축 읽기는 구현했고,
+범용 ops/visitor/skip·전체 registry/typed schema·component·migration 및 저장 writer는 남아 있다.
 현재 named root API는 이름을 보존·검증하며, 원본 이름을 건너뛰는 Vanilla 디스크 편의 함수와 구분된다.
 호출자별 disk fallback/oversized UTF 정책은 해당 소비자 구현에서 따로 대조한다.
 

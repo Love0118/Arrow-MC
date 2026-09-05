@@ -1,5 +1,5 @@
 {
-  "cargo_lock_sha256": "2ef8d17dc123a88a06b2df7f92e9bd5c1a696c96a462e602b39afeadbbac15b7",
+  "cargo_lock_sha256": "c7346e967fd28819dadafbf12b7fd882ef9acd440feaf78ddb91b212f01f044f",
   "scope": "All resolved Cargo registry packages and explicitly audited embedded-component notices; original bytes only, no implementation vendoring.",
   "packages": [
     {
@@ -1415,6 +1415,29 @@
           "source_path": "LICENSE-MIT",
           "sha256": "6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb",
           "license": "MIT OR Apache-2.0",
+          "scope": "Package notice."
+        }
+      ]
+    },
+    {
+      "name": "lz4_flex",
+      "version": "0.14.0",
+      "license": "MIT",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "repository": "https://github.com/pseitz/lz4_flex",
+      "cargo_checksum": "ecbdfe44b1bd960b68170b417450a628c43f7cf56bb3c5317e61cb230ee7f226",
+      "cargo_vcs_info": {
+        "git": {
+          "sha1": "1bffdcbbf906a234b913937cb2f57c0245915038"
+        },
+        "path_in_vcs": ""
+      },
+      "notices": [
+        {
+          "path": "lz4_flex-0.14.0/LICENSE",
+          "source_path": "LICENSE",
+          "sha256": "0982c33390159842ecce8e9d6ce2e5e39961fe0e0ffbb2eec39c9ba46db6db10",
+          "license": "MIT",
           "scope": "Package notice."
         }
       ]
@@ -3348,6 +3371,29 @@
           "source_path": "LICENSE",
           "sha256": "f367c1b8e1aa262435251e442901da4607b4650e0e63a026f5044473ecfb90f2",
           "license": "Unicode-3.0",
+          "scope": "Package notice."
+        }
+      ]
+    },
+    {
+      "name": "xxhash-rust",
+      "version": "0.8.18",
+      "license": "BSL-1.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "repository": "https://github.com/DoumanAsh/xxhash-rust",
+      "cargo_checksum": "aee1b19627c7c60102ab80d3a9cbe18de90bfe03bfa6c3715447681f0e8c8af6",
+      "cargo_vcs_info": {
+        "git": {
+          "sha1": "f93abc7ce0363e6910601e89ada2240f9ed7def6"
+        },
+        "path_in_vcs": ""
+      },
+      "notices": [
+        {
+          "path": "xxhash-rust-0.8.18/LICENSE",
+          "source_path": "LICENSE",
+          "sha256": "c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566",
+          "license": "BSL-1.0",
           "scope": "Package notice."
         }
       ]

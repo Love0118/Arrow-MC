@@ -7,8 +7,10 @@ Java 디컴파일본과 실제 실행 결과를 동작 기준으로 삼고, Pump
 현재 단계는 **실행 가능한 서버와 기반 기능 구현 진행 중**입니다. Java 서버 목록의 status/ping에 실제 TCP로 응답합니다.
 청크 section palette/packed storage와 제한된 CPU worker의 병렬 section 준비도 구현했습니다.
 검증된 snapshot을 지정하면 online 로그인·암호화·압축과 실제 registry/tag configuration 전송까지 수행합니다.
-block/fluid 예약 tick queue도 구현했습니다. **실제 spawn 준비와 Play·월드 생성·게임 tick 실행은 아직 미완료**입니다.
+현재 버전 Anvil 청크의 병렬 읽기·decode·resident 예산 전환과 block/fluid 예약 tick의 복원·영역 연산도 구현했습니다.
+**실제 spawn 준비와 Play·월드 생성·게임 tick 실행은 아직 미완료**입니다.
 현재 실행 방법과 검증 경계는 [로그인·configuration·예약 tick](docs/login-configuration.md)에 기록합니다.
+[청크 저장 로딩](docs/chunk-storage.md)과 [예약 tick 복원](docs/saved-ticks.md)에 추가 경로와 검증 범위를 기록합니다.
 [설계 기준](docs/architecture.md)과 [Vanilla/Pumpkin 비교·최적화 계획](docs/optimization-plan.md)에 지원 범위,
 동기·비동기 실행 경계, 가져올 최적화와 직접 가져오지 않을 동작을 정리했습니다.
 
@@ -30,7 +32,8 @@ NBT·wire·section kernel·CPU pool 자체에는 추가 외부 framework를 도�
 `src/snbt`는 현대 SNBT parser·compact/pretty writer와 UTF-16 진단을 처리합니다. [범위·자원 정책·대조 근거](docs/snbt.md)를 별도로 기록합니다.
 `src/nbt/path`와 `src/nbt/predicate`는 경로 조회·생성·변경·삭제와 bounded 비교를 처리하고, 여섯 NumericTag 변환도 제공합니다.
 [NBT 경로 범위와 API 차이](docs/nbt-path.md)를 구분해 기록합니다. `src/wire`는 VarInt/VarLong을 처리합니다.
-NBT ops·디스크 NBT 압축·typed registry/component와 item gameplay는 아직 구현 전입니다.
+디스크 NBT 압축과 현재 청크용 block-state/biome registry는 구현했습니다.
+범용 NBT ops·전체 typed registry/component와 item gameplay는 아직 구현 전입니다.
 로컬 디코더 메모리 예산은 요청한 backing allocation의 누계이며 RSS 상한을 뜻하지 않습니다. writer는 추가 출력 길이를 제한합니다.
 
 ```powershell

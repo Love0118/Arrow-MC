@@ -181,7 +181,7 @@ fn schedule(
     format!("S|{name}|{}", owner.next_sub_tick_order())
 }
 
-fn queries(owner: &ScheduledTickOwner, domain: TickDomain) -> String {
+fn queries(owner: &mut ScheduledTickOwner, domain: TickDomain) -> String {
     let mut result = format!("|{}", owner.queued_count(domain));
     for id in 1..=3 {
         write!(
@@ -245,7 +245,7 @@ fn rust_trace(script: &str) -> Vec<String> {
                 let domain = domain(fields[2]);
                 let time = n(3);
                 let action = fields[5];
-                output.push(format!("R|{name}{}", queries(&owner, domain)));
+                output.push(format!("R|{name}{}", queries(&mut owner, domain)));
                 owner.begin_phase(domain, time, n(4) as usize).unwrap();
                 while let Some(tick) = owner.next_due().unwrap() {
                     output.push(format!(
@@ -254,7 +254,7 @@ fn rust_trace(script: &str) -> Vec<String> {
                         tick.position.x,
                         tick.position.y,
                         tick.position.z,
-                        queries(&owner, domain)
+                        queries(&mut owner, domain)
                     ));
                     if action == "reschedule" && tick.type_id == 1 {
                         for (id, priority) in [(1, 0), (2, -1), (3, -3)] {
@@ -268,7 +268,7 @@ fn rust_trace(script: &str) -> Vec<String> {
                                 priority,
                             ));
                         }
-                        output.push(format!("Q|{name}{}", queries(&owner, domain)));
+                        output.push(format!("Q|{name}{}", queries(&mut owner, domain)));
                     }
                     if action == "blockfluid" && tick.type_id == 1 {
                         output.push(schedule(
@@ -289,7 +289,7 @@ fn rust_trace(script: &str) -> Vec<String> {
                             0,
                             0,
                         ));
-                        output.push(format!("Q|{name}{}", queries(&owner, domain)));
+                        output.push(format!("Q|{name}{}", queries(&mut owner, domain)));
                     }
                     if action == "fluidblock" && tick.type_id == 2 {
                         output.push(schedule(
@@ -301,13 +301,13 @@ fn rust_trace(script: &str) -> Vec<String> {
                             0,
                             -1,
                         ));
-                        output.push(format!("Q|{name}{}", queries(&owner, domain)));
+                        output.push(format!("Q|{name}{}", queries(&mut owner, domain)));
                     }
                 }
                 owner.finish_phase().unwrap();
                 output.push(format!(
                     "E|{name}{}|{}",
-                    queries(&owner, domain),
+                    queries(&mut owner, domain),
                     owner.next_sub_tick_order()
                 ));
             }

@@ -57,6 +57,7 @@
 | linux-raw-sys 0.12.1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | [COPYRIGHT](linux-raw-sys-0.12.1/COPYRIGHT), [LICENSE-APACHE](linux-raw-sys-0.12.1/LICENSE-APACHE), [LICENSE-Apache-2.0_WITH_LLVM-exception](linux-raw-sys-0.12.1/LICENSE-Apache-2.0_WITH_LLVM-exception), [LICENSE-MIT](linux-raw-sys-0.12.1/LICENSE-MIT) |
 | litemap 0.8.3 | Unicode-3.0 | [LICENSE](litemap-0.8.3/LICENSE) |
 | log 0.4.34 | MIT OR Apache-2.0 | [LICENSE-APACHE](log-0.4.34/LICENSE-APACHE), [LICENSE-MIT](log-0.4.34/LICENSE-MIT) |
+| lz4_flex 0.14.0 | MIT | [LICENSE](lz4_flex-0.14.0/LICENSE) |
 | memchr 2.8.3 | Unlicense OR MIT | [COPYING](memchr-2.8.3/COPYING), [LICENSE-MIT](memchr-2.8.3/LICENSE-MIT), [UNLICENSE](memchr-2.8.3/UNLICENSE) |
 | mio 1.2.3 | MIT | [LICENSE](mio-1.2.3/LICENSE) |
 | native-tls 0.2.18 | MIT OR Apache-2.0 | [LICENSE-APACHE](native-tls-0.2.18/LICENSE-APACHE), [LICENSE-MIT](native-tls-0.2.18/LICENSE-MIT) |
@@ -124,6 +125,7 @@
 | windows-link 0.2.1 | MIT OR Apache-2.0 | [license-apache-2.0](windows-link-0.2.1/license-apache-2.0), [license-mit](windows-link-0.2.1/license-mit) |
 | windows-sys 0.61.2 | MIT OR Apache-2.0 | [license-apache-2.0](windows-sys-0.61.2/license-apache-2.0), [license-mit](windows-sys-0.61.2/license-mit) |
 | writeable 0.6.4 | Unicode-3.0 | [LICENSE](writeable-0.6.4/LICENSE) |
+| xxhash-rust 0.8.18 | BSL-1.0 | [LICENSE](xxhash-rust-0.8.18/LICENSE) |
 | yoke 0.8.3 | Unicode-3.0 | [LICENSE](yoke-0.8.3/LICENSE) |
 | yoke-derive 0.8.2 | Unicode-3.0 | [LICENSE](yoke-derive-0.8.2/LICENSE) |
 | zerofrom 0.1.8 | Unicode-3.0 | [LICENSE](zerofrom-0.1.8/LICENSE) |
