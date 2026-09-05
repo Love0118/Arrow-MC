@@ -283,6 +283,79 @@ async fn source_keeps_actual_resident_budget_until_the_last_snapshot_is_dropped(
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn saved_light_borrows_original_rows_without_canonical_reordering_or_layer_copies() {
+    let fixture = fixture();
+    let registry = Arc::new(fixture.load());
+    let directory = fixture.root.join("saved-light-region");
+    let mut first = disk_section(0, "test:bright");
+    let Tag::Compound(first_row) = &mut first else {
+        unreachable!()
+    };
+    first_row
+        .insert("BlockLight".into(), Tag::ByteArray(vec![0x12; 2048]))
+        .unwrap();
+    let far = compound([
+        ("Y", Tag::Byte(-128)),
+        ("SkyLight", Tag::ByteArray(vec![0x34; 2048])),
+    ]);
+    let last = disk_section(0, "test:dim");
+    region(&directory, &[(0, vec![first, far, last])]);
+    let store = store(&directory, &registry);
+    let mut owner = owner(&registry);
+    publish(&mut owner, &store, 0).await;
+    let source =
+        LightingSource::from_canonical(&owner, &[address(0)], SourceLimits::default()).unwrap();
+    let resident_bytes = owner.stats().resident_bytes;
+    let original = owner.resident(address(0)).unwrap().draft().sections();
+    let saved = source.saved_light(address(0)).unwrap();
+    assert_eq!(
+        saved.status,
+        arrow_mc::world::storage::chunk::ChunkStatus::Full
+    );
+    assert!(!saved.light_correct);
+    assert_eq!(saved.rows.as_ptr(), original.as_ptr());
+    assert_eq!(
+        saved.rows.iter().map(|row| row.y).collect::<Vec<_>>(),
+        [0, -128, 0]
+    );
+    assert_eq!(
+        saved.rows[0].block_light.as_deref(),
+        Some(&[0x12; 2048][..])
+    );
+    assert_eq!(saved.rows[1].sky_light.as_deref(), Some(&[0x34; 2048][..]));
+    assert!(saved.rows[2].block_light.is_none());
+    assert_eq!(source.state_at(block(0, 0, 0)), DIM);
+    assert!(source.saved_light(address(1)).is_none());
+    assert_eq!(owner.stats().resident_bytes, resident_bytes);
+    assert!(owner.remove_demand(address(0)));
+    assert!(!source.is_current(&owner));
+    assert_eq!(
+        source.saved_light(address(0)).unwrap().rows[0]
+            .block_light
+            .as_deref(),
+        Some(&[0x12; 2048][..])
+    );
+    assert_eq!(owner.stats().resident_bytes, resident_bytes);
+    drop(source);
+    assert_eq!(owner.stats().resident_bytes, 0);
+}
+
+#[test]
+fn producer_owned_terrain_does_not_invent_saved_light_metadata() {
+    let fixture = fixture();
+    let registry = Arc::new(fixture.load());
+    let source = LightingSource::from_sections(
+        registry,
+        height(),
+        vec![empty_chunk(address(0), height())],
+        SourceLimits::default(),
+    )
+    .unwrap();
+    assert!(source.has_chunk(address(0)));
+    assert!(source.saved_light(address(0)).is_none());
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn publication_of_a_previously_absent_or_excluded_neighbor_invalidates_the_source() {
     let fixture = fixture();
     let registry = Arc::new(fixture.load());

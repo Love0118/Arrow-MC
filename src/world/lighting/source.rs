@@ -7,7 +7,10 @@ use crate::{
         loading::ChunkLoadingOwner,
         preparation::ChunkAddress,
         section::Section,
-        storage::{chunk::DimensionHeight, registry::ChunkRegistrySnapshot},
+        storage::{
+            chunk::{ChunkStatus, DimensionHeight, StoredSection},
+            registry::ChunkRegistrySnapshot,
+        },
     },
 };
 use std::sync::Arc;
@@ -47,6 +50,14 @@ impl Default for SourceLimits {
 pub struct LightingChunk {
     pub address: ChunkAddress,
     pub sections: Vec<Option<Section>>,
+}
+/// Original validated disk rows, borrowed from the existing resident lease.
+/// Missing fields in later rows do not erase earlier queued layers. Consumers
+/// preserve row order and install at the requested chunk coordinates.
+pub struct SavedLight<'a> {
+    pub status: ChunkStatus,
+    pub light_correct: bool,
+    pub rows: &'a [StoredSection],
 }
 enum Data {
     Resident {
@@ -248,6 +259,19 @@ impl LightingSource {
     }
     pub fn has_chunk(&self, address: ChunkAddress) -> bool {
         self.chunk(address).is_some()
+    }
+    /// Producer-owned terrain has no persisted-light provenance. Callers must
+    /// choose fresh lighting for it instead of inventing saved flags or layers.
+    pub fn saved_light(&self, address: ChunkAddress) -> Option<SavedLight<'_>> {
+        let Data::Resident { resident, .. } = &self.chunk(address)?.data else {
+            return None;
+        };
+        let draft = resident.draft();
+        Some(SavedLight {
+            status: draft.status,
+            light_correct: draft.light_correct,
+            rows: draft.sections(),
+        })
     }
     pub fn chunk_addresses(&self) -> impl ExactSizeIterator<Item = ChunkAddress> + '_ {
         self.chunks.iter().map(|v| v.address)

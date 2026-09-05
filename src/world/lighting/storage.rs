@@ -245,6 +245,109 @@ impl LightSnapshot {
     }
 }
 
+struct DataSnapshotData {
+    kind: LightKind,
+    layers: Vec<SnapshotLayer>,
+    _layers_lease: Lease,
+    _body_lease: Lease,
+}
+
+/// Immutable getDataLayerData selection for packet/save consumers: queued data
+/// wins over the published visible layer, including unsupported queued sections.
+/// This is distinct from gameplay light sampling and deliberately has no level
+/// getter or sky top-column map. Capturing does not create support or publish.
+#[derive(Clone)]
+pub struct LightDataSnapshot {
+    inner: Arc<DataSnapshotData>,
+}
+
+impl LightDataSnapshot {
+    pub fn kind(&self) -> LightKind {
+        self.inner.kind
+    }
+
+    pub fn layer(&self, key: LightSection) -> Option<&DataLayer> {
+        snapshot_index(&self.inner.layers, key)
+            .ok()
+            .map(|index| &self.inner.layers[index].layer.value)
+    }
+
+    pub fn sections(&self) -> impl Iterator<Item = LightSection> + '_ {
+        self.inner.layers.iter().map(|entry| entry.key)
+    }
+
+    /// Reachable metadata and conservative per-reference layer/control allowance,
+    /// excluding this inline handle. Shared references are charged repeatedly;
+    /// this allocation-free query neither materializes layers nor reads ledger use.
+    pub fn retained_bytes(&self) -> Result<usize, StorageError> {
+        let mut bytes = data_snapshot_backing_bytes(self.inner.layers.capacity())?;
+        for entry in &self.inner.layers {
+            bytes = bytes
+                .checked_add(layer_backing_bytes(entry.layer.value.heap_bytes())?)
+                .ok_or(StorageError::MetadataLimit)?;
+        }
+        Ok(bytes)
+    }
+}
+
+fn data_snapshot_backing_bytes(capacity: usize) -> Result<usize, StorageError> {
+    size_of::<DataSnapshotData>()
+        .checked_add(2 * size_of::<usize>())
+        .and_then(|bytes| bytes.checked_add(size_of::<Budget>() + 2 * size_of::<usize>()))
+        .and_then(|bytes| bytes.checked_add(capacity.checked_mul(size_of::<SnapshotLayer>())?))
+        .ok_or(StorageError::MetadataLimit)
+}
+
+/// Both inputs have x/z/y order. Skip nonqueued current entries, retaining even
+/// visible keys whose updating entry has already been removed before publication.
+struct DataSelection<'a> {
+    entries: &'a [Entry],
+    visible: &'a [SnapshotLayer],
+    current: usize,
+    published: usize,
+}
+
+impl<'a> Iterator for DataSelection<'a> {
+    type Item = (LightSection, &'a Arc<ChargedLayer>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self
+            .entries
+            .get(self.current)
+            .is_some_and(|entry| entry.queued.is_none())
+        {
+            self.current += 1;
+        }
+        match (
+            self.entries.get(self.current),
+            self.visible.get(self.published),
+        ) {
+            (Some(queued), Some(visible)) if sort_key(queued.key) <= sort_key(visible.key) => {
+                self.current += 1;
+                if queued.key == visible.key {
+                    self.published += 1;
+                }
+                Some((
+                    queued.key,
+                    queued.queued.as_ref().expect("skipped nonqueued entries"),
+                ))
+            }
+            (_, Some(visible)) => {
+                self.published += 1;
+                Some((visible.key, &visible.layer))
+            }
+            (Some(queued), None) => {
+                self.current += 1;
+                Some((
+                    queued.key,
+                    queued.queued.as_ref().expect("skipped nonqueued entries"),
+                ))
+            }
+            (None, None) => None,
+        }
+    }
+}
+
 fn snapshot_backing_bytes(
     layer_capacity: usize,
     top_capacity: usize,
@@ -305,50 +408,52 @@ impl LightSectionStorage {
     pub fn new(kind: LightKind, limits: StorageLimits) -> Result<Self, StorageError> {
         let metadata = Budget::new(limits.metadata_bytes);
         let layers = Budget::new(limits.layer_bytes);
-        let (entries, entries_lease) = vector(limits.max_sections, &metadata)?;
-        let (columns, columns_lease) = vector(limits.max_columns, &metadata)?;
-        let (notifications, notifications_lease) = vector(limits.max_notifications, &metadata)?;
-        let (published_notifications, published_notifications_lease) =
-            vector(limits.max_notifications, &metadata)?;
-        let (scratch, scratch_lease) = vector(limits.max_notifications, &metadata)?;
-        let (staged, staged_lease) = vector(limits.max_sections, &metadata)?;
-        let (visible_layers, vl) = vector(0, &metadata)?;
-        let (tops, vt) = vector(0, &metadata)?;
+        // Keep (payload, lease) tuples intact through all fallible allocations.
+        // Tuple fields drop in declaration order; separate local bindings would
+        // refund the lease first during reverse local destruction on failure.
+        let entries = vector(limits.max_sections, &metadata)?;
+        let columns = vector(limits.max_columns, &metadata)?;
+        let notifications = vector(limits.max_notifications, &metadata)?;
+        let published_notifications = vector(limits.max_notifications, &metadata)?;
+        let scratch = vector(limits.max_notifications, &metadata)?;
+        let staged = vector(limits.max_sections, &metadata)?;
+        let visible_layers = vector(0, &metadata)?;
+        let tops = vector(0, &metadata)?;
         let body = metadata
             .reserve(size_of::<SnapshotData>() + 2 * size_of::<usize>())
             .map_err(|_| StorageError::MetadataLimit)?;
         let visible = LightSnapshot {
             inner: Arc::new(SnapshotData {
                 kind,
-                layers: visible_layers,
-                tops,
+                layers: visible_layers.0,
+                tops: tops.0,
                 lowest: i32::MAX,
-                _layers_lease: vl,
-                _tops_lease: vt,
+                _layers_lease: visible_layers.1,
+                _tops_lease: tops.1,
                 _body_lease: body,
             }),
         };
         Ok(Self {
             kind,
             limits,
-            entries,
-            columns,
-            notifications,
-            published_notifications,
-            scratch,
-            staged,
+            entries: entries.0,
+            columns: columns.0,
+            notifications: notifications.0,
+            published_notifications: published_notifications.0,
+            scratch: scratch.0,
+            staged: staged.0,
             visible,
             lowest: i32::MAX,
             changed: false,
             inconsistent: false,
             metadata,
             layers,
-            _entries_lease: entries_lease,
-            _columns_lease: columns_lease,
-            _notifications_lease: notifications_lease,
-            _published_notifications_lease: published_notifications_lease,
-            _scratch_lease: scratch_lease,
-            _staged_lease: staged_lease,
+            _entries_lease: entries.1,
+            _columns_lease: columns.1,
+            _notifications_lease: notifications.1,
+            _published_notifications_lease: published_notifications.1,
+            _scratch_lease: scratch.1,
+            _staged_lease: staged.1,
         })
     }
     pub fn kind(&self) -> LightKind {
@@ -384,6 +489,42 @@ impl LightSectionStorage {
             .and_then(|i| self.entries[i].queued.as_ref())
             .map(|v| &v.value)
             .or_else(|| self.visible.layer(key))
+    }
+
+    /// Freezes the queued-over-visible union using a budgeted descriptor vector
+    /// and Arc body. Layer references are shared without payload copies. Failure
+    /// returns all temporary reservations and never changes queue, updating or
+    /// visible state. Capture is a data view, not a lighting completion fence.
+    pub fn data_snapshot(&self) -> Result<LightDataSnapshot, StorageError> {
+        let selection = || DataSelection {
+            entries: &self.entries,
+            visible: &self.visible.inner.layers,
+            current: 0,
+            published: 0,
+        };
+        let count = selection().try_fold(0usize, |count, _| {
+            count.checked_add(1).ok_or(StorageError::MetadataLimit)
+        })?;
+        // Reserve the fixed body before the vector/lease tuple. No later
+        // fallible reservation may refund a tuple-bound lease before its Vec
+        // is destroyed during reverse local-binding cleanup.
+        let body_lease = self
+            .metadata
+            .reserve(size_of::<DataSnapshotData>() + 2 * size_of::<usize>())
+            .map_err(|_| StorageError::MetadataLimit)?;
+        let (mut layers, layers_lease) = vector(count, &self.metadata)?;
+        layers.extend(selection().map(|(key, layer)| SnapshotLayer {
+            key,
+            layer: Arc::clone(layer),
+        }));
+        Ok(LightDataSnapshot {
+            inner: Arc::new(DataSnapshotData {
+                kind: self.kind,
+                layers,
+                _layers_lease: layers_lease,
+                _body_lease: body_lease,
+            }),
+        })
     }
     pub fn section_type(&self, key: LightSection) -> SectionType {
         match self
@@ -830,19 +971,19 @@ impl LightSectionStorage {
                 .filter(|entry| entry.updating.is_some())
                 .count();
             let tops_count = self.columns.iter().filter(|col| col.top.is_some()).count();
-            let (mut layers, ll) = vector(count, &self.metadata)?;
-            let (mut tops, tl) = vector(tops_count, &self.metadata)?;
+            let mut layers = vector(count, &self.metadata)?;
+            let mut tops = vector(tops_count, &self.metadata)?;
             let body = self
                 .metadata
                 .reserve(size_of::<SnapshotData>() + 2 * size_of::<usize>())
                 .map_err(|_| StorageError::MetadataLimit)?;
-            layers.extend(self.entries.iter().filter_map(|entry| {
+            layers.0.extend(self.entries.iter().filter_map(|entry| {
                 entry.updating.as_ref().map(|layer| SnapshotLayer {
                     key: entry.key,
                     layer: Arc::clone(layer),
                 })
             }));
-            tops.extend(
+            tops.0.extend(
                 self.columns
                     .iter()
                     .filter_map(|col| col.top.map(|top| SnapshotTop { key: col.key, top })),
@@ -850,11 +991,11 @@ impl LightSectionStorage {
             let next = LightSnapshot {
                 inner: Arc::new(SnapshotData {
                     kind: self.kind,
-                    layers,
-                    tops,
+                    layers: layers.0,
+                    tops: tops.0,
                     lowest: self.lowest,
-                    _layers_lease: ll,
-                    _tops_lease: tl,
+                    _layers_lease: layers.1,
+                    _tops_lease: tops.1,
                     _body_lease: body,
                 }),
             };
@@ -1272,6 +1413,10 @@ mod retention_tests {
     #[test]
     fn retention_arithmetic_rejects_impossible_capacities_without_allocating_them() {
         assert_eq!(
+            data_snapshot_backing_bytes(usize::MAX),
+            Err(StorageError::MetadataLimit)
+        );
+        assert_eq!(
             snapshot_backing_bytes(usize::MAX, 0),
             Err(StorageError::MetadataLimit)
         );
@@ -1290,5 +1435,39 @@ mod retention_tests {
             layer_backing_bytes(usize::MAX - overhead + 1),
             Err(StorageError::MetadataLimit)
         );
+    }
+
+    #[test]
+    fn failed_later_reservation_drops_vector_payload_before_refunding_its_lease() {
+        struct Payload {
+            budget: Arc<Budget>,
+            drops: Arc<AtomicUsize>,
+            expected: usize,
+        }
+        impl Drop for Payload {
+            fn drop(&mut self) {
+                assert_eq!(
+                    self.budget.used.load(Ordering::Acquire),
+                    self.expected,
+                    "payload destructor must still own its reservation"
+                );
+                self.drops.fetch_add(1, Ordering::AcqRel);
+            }
+        }
+        fn fail(budget: &Arc<Budget>, drops: &Arc<AtomicUsize>) -> Result<(), StorageError> {
+            let mut retained = vector(1, budget)?;
+            retained.0.push(Payload {
+                budget: Arc::clone(budget),
+                drops: Arc::clone(drops),
+                expected: retained.1.bytes,
+            });
+            let _later = budget.reserve(usize::MAX)?;
+            Ok(())
+        }
+        let budget = Budget::new(4096);
+        let drops = Arc::new(AtomicUsize::new(0));
+        assert_eq!(fail(&budget, &drops), Err(StorageError::Budget));
+        assert_eq!(drops.load(Ordering::Acquire), 1);
+        assert_eq!(budget.used.load(Ordering::Acquire), 0);
     }
 }

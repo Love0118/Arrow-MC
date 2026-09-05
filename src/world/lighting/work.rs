@@ -1,16 +1,26 @@
-//! Fresh initial relighting of one admitted immutable available-chunk domain.
+//! Fresh relighting or saved-light restoration of one admitted immutable domain.
 //!
-//! This coordinator does not restore saved light, replay ThreadedLevelLightEngine
-//! callbacks, or implement world tickets. Intermediate engine publications remain
-//! private until both layers converge. The caller then checks the source fence.
+//! Restoration stages the original rows and executes scoped initialize/light
+//! phases. It does not replay arbitrary Threaded callbacks, mutable lightCorrect
+//! setters, future/marker history or world tickets. Intermediate publications stay
+//! private until both layers and packet data views complete, then the owner fences.
 
 use std::fmt;
 
 use super::block::{BlockLightEngine, BlockLightError, BlockLightLimits};
 use super::sky::{SkyError, SkyLightEngine, SkyLimits};
-use super::storage::{LightSectionStorage, LightSnapshot, StorageError, StorageLimits};
-use super::{LightKind, LightSection, LightingSource, SourceStamp};
+use super::storage::{
+    LightDataSnapshot, LightSectionStorage, LightSnapshot, StorageError, StorageLimits,
+};
+use super::{LightError, LightKind, LightSection, LightingSource, SourceStamp};
 use crate::world::preparation::ChunkAddress;
+use crate::world::storage::chunk::ChunkStatus;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LightingMode {
+    Fresh,
+    RestoreSaved,
+}
 
 #[derive(Clone, Copy, Debug)]
 pub struct SkyWorkLimits {
@@ -84,6 +94,7 @@ pub enum LightingError {
     Block(BlockLightError),
     Sky(SkyError),
     Storage(StorageError),
+    Source(LightError),
 }
 
 impl fmt::Display for LightingError {
@@ -107,6 +118,11 @@ impl From<StorageError> for LightingError {
         Self::Storage(error)
     }
 }
+impl From<LightError> for LightingError {
+    fn from(error: LightError) -> Self {
+        Self::Source(error)
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct WorkProgress {
@@ -116,6 +132,20 @@ pub struct WorkProgress {
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum Phase {
+    RestoreRows,
+    RestoreRetainBlock,
+    RestoreRetainSky,
+    RestoreRowBlock,
+    RestoreRowSky,
+    RestoreSources,
+    InitializeUpdateBlock,
+    InitializeUpdateSky,
+    InitializePostBlock,
+    InitializePostSky,
+    InitializeReleaseBlock,
+    InitializeReleaseSky,
+    RestoreLightBlock,
+    RestoreLightSky,
     SupportBlock,
     SupportSky,
     SkySources,
@@ -124,6 +154,8 @@ enum Phase {
     BlockSources,
     BlockRun,
     SkyRun,
+    CaptureBlock,
+    CaptureSky,
     Complete,
 }
 
@@ -138,6 +170,11 @@ pub struct LightingWork {
     section_y: i32,
     reservation_bytes: usize,
     limits: LightingLimits,
+    mode: LightingMode,
+    row: usize,
+    retained: bool,
+    packet_block: Option<LightDataSnapshot>,
+    packet_sky: Option<LightDataSnapshot>,
 }
 
 impl LightingWork {
@@ -145,10 +182,35 @@ impl LightingWork {
     /// `limits.reservation_bytes()` before calling this allocating constructor.
     /// Standalone callers must provide the equivalent external admission.
     pub fn new(source: LightingSource, limits: LightingLimits) -> Result<Self, LightingError> {
+        Self::create(source, limits, LightingMode::Fresh)
+    }
+
+    /// Restore the original canonical saved rows, then execute one selected
+    /// domain's initialize/light phases. This is not a general Threaded task
+    /// dispatcher and does not emulate its arbitrary 1,000-task marker batches.
+    pub fn new_restore(
+        source: LightingSource,
+        limits: LightingLimits,
+    ) -> Result<Self, LightingError> {
+        Self::create(source, limits, LightingMode::RestoreSaved)
+    }
+
+    fn create(
+        source: LightingSource,
+        limits: LightingLimits,
+        mode: LightingMode,
+    ) -> Result<Self, LightingError> {
         let reservation_bytes = limits.reservation_bytes()?;
         let count = source.chunk_addresses().len();
         if count > limits.max_chunks {
             return Err(LightingError::InvalidLimits);
+        }
+        if mode == LightingMode::RestoreSaved {
+            for address in source.chunk_addresses() {
+                if source.saved_light(address).is_none() {
+                    return Err(LightError::MissingStoredLight.into());
+                }
+            }
         }
         if count
             .checked_mul(size_of::<ChunkAddress>())
@@ -186,11 +248,20 @@ impl LightingWork {
             block,
             block_storage,
             sky,
-            phase: Phase::SupportBlock,
+            phase: if mode == LightingMode::Fresh {
+                Phase::SupportBlock
+            } else {
+                Phase::RestoreRows
+            },
             chunk: 0,
             section_y,
             reservation_bytes,
             limits,
+            mode,
+            row: 0,
+            retained: false,
+            packet_block: None,
+            packet_sky: None,
         })
     }
 
@@ -273,10 +344,114 @@ impl LightingWork {
         let mut processed = 0;
         while processed < max_units && self.phase != Phase::Complete {
             match self.phase {
-                Phase::SupportBlock => {
+                Phase::RestoreRows => {
                     if self.chunk == self.addresses.len() {
                         self.chunk = 0;
                         self.phase = if self.sky.is_some() {
+                            Phase::RestoreSources
+                        } else {
+                            Phase::SupportBlock
+                        };
+                        continue;
+                    }
+                    let saved = self
+                        .source
+                        .saved_light(self.addresses[self.chunk])
+                        .ok_or(LightError::MissingStoredLight)?;
+                    if self.row == saved.rows.len() {
+                        self.chunk += 1;
+                        self.row = 0;
+                        self.retained = false;
+                        continue;
+                    }
+                    let row = &saved.rows[self.row];
+                    if row.block_light.is_some() || (self.sky.is_some() && row.sky_light.is_some())
+                    {
+                        self.phase = if self.retained {
+                            Phase::RestoreRowBlock
+                        } else {
+                            Phase::RestoreRetainBlock
+                        };
+                    } else {
+                        self.row += 1;
+                    }
+                    processed += 1;
+                }
+                Phase::RestoreRetainBlock => {
+                    self.block_storage
+                        .retain_data(self.addresses[self.chunk], true)?;
+                    self.phase = Phase::RestoreRetainSky;
+                    processed += 1;
+                }
+                Phase::RestoreRetainSky => {
+                    if let Some(sky) = &mut self.sky {
+                        sky.storage_mut()?
+                            .retain_data(self.addresses[self.chunk], true)?;
+                    }
+                    self.retained = true;
+                    self.phase = Phase::RestoreRowBlock;
+                    processed += 1;
+                }
+                Phase::RestoreRowBlock => {
+                    let address = self.addresses[self.chunk];
+                    let row = &self
+                        .source
+                        .saved_light(address)
+                        .ok_or(LightError::MissingStoredLight)?
+                        .rows[self.row];
+                    if let Some(bytes) = &row.block_light {
+                        self.block_storage.queue_bytes(
+                            LightSection {
+                                x: address.x,
+                                y: i32::from(row.y),
+                                z: address.z,
+                            },
+                            Some(bytes),
+                        )?;
+                    }
+                    self.phase = Phase::RestoreRowSky;
+                    processed += 1;
+                }
+                Phase::RestoreRowSky => {
+                    let address = self.addresses[self.chunk];
+                    let row = &self
+                        .source
+                        .saved_light(address)
+                        .ok_or(LightError::MissingStoredLight)?
+                        .rows[self.row];
+                    if let (Some(sky), Some(bytes)) = (&mut self.sky, &row.sky_light) {
+                        sky.storage_mut()?.queue_bytes(
+                            LightSection {
+                                x: address.x,
+                                y: i32::from(row.y),
+                                z: address.z,
+                            },
+                            Some(bytes),
+                        )?;
+                    }
+                    self.row += 1;
+                    self.phase = Phase::RestoreRows;
+                    processed += 1;
+                }
+                Phase::RestoreSources => {
+                    if self.chunk == self.addresses.len() {
+                        self.chunk = 0;
+                        self.phase = Phase::SupportBlock;
+                        continue;
+                    }
+                    self.sky
+                        .as_mut()
+                        .unwrap()
+                        .initialize_sources(&self.source, self.addresses[self.chunk])?;
+                    self.chunk += 1;
+                    processed += 1;
+                }
+                Phase::SupportBlock => {
+                    if self.chunk == self.addresses.len() {
+                        self.chunk = 0;
+                        self.phase = if self.mode == LightingMode::RestoreSaved {
+                            Phase::InitializeUpdateBlock
+                        } else if self.sky.is_some() {
                             Phase::SkySources
                         } else {
                             Phase::BlockSources
@@ -309,6 +484,105 @@ impl LightingWork {
                     }
                     self.advance_section();
                     self.phase = Phase::SupportBlock;
+                    processed += 1;
+                }
+                Phase::InitializeUpdateBlock => {
+                    let result = self.block.run(
+                        &self.source,
+                        &mut self.block_storage,
+                        max_units - processed,
+                    )?;
+                    processed += result.processed;
+                    if result.complete {
+                        self.phase = if self.sky.is_some() {
+                            Phase::InitializeUpdateSky
+                        } else {
+                            Phase::InitializePostBlock
+                        };
+                    } else {
+                        return Ok(WorkProgress {
+                            processed,
+                            complete: false,
+                        });
+                    }
+                }
+                Phase::InitializeUpdateSky => {
+                    let result = self
+                        .sky
+                        .as_mut()
+                        .unwrap()
+                        .run_budgeted(&self.source, max_units - processed)?;
+                    processed += result.processed;
+                    if result.complete {
+                        self.phase = Phase::InitializePostBlock;
+                    } else {
+                        return Ok(WorkProgress {
+                            processed,
+                            complete: false,
+                        });
+                    }
+                }
+                Phase::InitializePostBlock => {
+                    if self.chunk == self.addresses.len() {
+                        self.chunk = 0;
+                        self.phase = Phase::RestoreLightBlock;
+                        continue;
+                    }
+                    self.block_storage
+                        .set_enabled(self.addresses[self.chunk], self.is_lighted(self.chunk)?)?;
+                    self.phase = Phase::InitializePostSky;
+                    processed += 1;
+                }
+                Phase::InitializePostSky => {
+                    let enabled = self.is_lighted(self.chunk)?;
+                    if let Some(sky) = &mut self.sky {
+                        sky.set_light_enabled(self.addresses[self.chunk], enabled)?;
+                    }
+                    self.phase = Phase::InitializeReleaseBlock;
+                    processed += 1;
+                }
+                Phase::InitializeReleaseBlock => {
+                    self.block_storage
+                        .retain_data(self.addresses[self.chunk], false)?;
+                    self.phase = Phase::InitializeReleaseSky;
+                    processed += 1;
+                }
+                Phase::InitializeReleaseSky => {
+                    if let Some(sky) = &mut self.sky {
+                        sky.storage_mut()?
+                            .retain_data(self.addresses[self.chunk], false)?;
+                    }
+                    self.chunk += 1;
+                    self.phase = Phase::InitializePostBlock;
+                    processed += 1;
+                }
+                Phase::RestoreLightBlock => {
+                    if self.chunk == self.addresses.len() {
+                        self.phase = Phase::BlockRun;
+                        continue;
+                    }
+                    if self.is_lighted(self.chunk)? {
+                        self.chunk += 1;
+                    } else {
+                        self.block.propagate_light_sources(
+                            &self.source,
+                            &mut self.block_storage,
+                            self.addresses[self.chunk],
+                        )?;
+                        self.phase = Phase::RestoreLightSky;
+                    }
+                    processed += 1;
+                }
+                Phase::RestoreLightSky => {
+                    let done = if let Some(sky) = &mut self.sky {
+                        sky.populate_budgeted(self.addresses[self.chunk], 1)?
+                    } else {
+                        true
+                    };
+                    if done {
+                        self.chunk += 1;
+                        self.phase = Phase::RestoreLightBlock;
+                    }
                     processed += 1;
                 }
                 Phase::SkySources => {
@@ -373,7 +647,7 @@ impl LightingWork {
                         self.phase = if self.sky.is_some() {
                             Phase::SkyRun
                         } else {
-                            Phase::Complete
+                            Phase::CaptureBlock
                         };
                     } else {
                         return Ok(WorkProgress {
@@ -390,13 +664,25 @@ impl LightingWork {
                         .run_budgeted(&self.source, max_units - processed)?;
                     processed += result.processed;
                     if result.complete {
-                        self.phase = Phase::Complete;
+                        self.phase = Phase::CaptureBlock;
                     } else {
                         return Ok(WorkProgress {
                             processed,
                             complete: false,
                         });
                     }
+                }
+                Phase::CaptureBlock => {
+                    self.packet_block = Some(self.block_storage.data_snapshot()?);
+                    self.phase = Phase::CaptureSky;
+                    processed += 1;
+                }
+                Phase::CaptureSky => {
+                    if let Some(sky) = &self.sky {
+                        self.packet_sky = Some(sky.storage().data_snapshot()?);
+                    }
+                    self.phase = Phase::Complete;
+                    processed += 1;
                 }
                 Phase::Complete => unreachable!(),
             }
@@ -415,6 +701,16 @@ impl LightingWork {
             self.section_y += 1;
         }
     }
+    fn is_lighted(&self, chunk: usize) -> Result<bool, LightingError> {
+        let saved = self
+            .source
+            .saved_light(self.addresses[chunk])
+            .ok_or(LightError::MissingStoredLight)?;
+        Ok(matches!(
+            saved.status,
+            ChunkStatus::Light | ChunkStatus::Spawn | ChunkStatus::Full
+        ) && saved.light_correct)
+    }
 
     /// Returns the existing owner intact if either layer is still pending. An
     /// extra Box allocation would undermine failure-path reservation ownership.
@@ -427,11 +723,19 @@ impl LightingWork {
             source,
             block_storage,
             sky,
+            packet_block,
+            packet_sky,
             ..
         } = self;
         let block = block_storage.snapshot();
         let sky = sky.as_ref().map(|sky| sky.storage().snapshot());
-        Ok(CompletedLighting { source, block, sky })
+        Ok(CompletedLighting {
+            source,
+            block,
+            sky,
+            packet_block: packet_block.expect("packet snapshot captured before completion"),
+            packet_sky,
+        })
     }
 }
 
@@ -444,6 +748,8 @@ pub struct CompletedLighting {
     source: LightingSource,
     block: LightSnapshot,
     sky: Option<LightSnapshot>,
+    packet_block: LightDataSnapshot,
+    packet_sky: Option<LightDataSnapshot>,
 }
 impl CompletedLighting {
     /// Conservative resident allowance for this inline owner and its reachable
@@ -470,6 +776,14 @@ impl CompletedLighting {
                 .checked_add(sky.retained_bytes()?)
                 .ok_or(LightingError::AllocationLimit)?;
         }
+        bytes = bytes
+            .checked_add(self.packet_block.retained_bytes()?)
+            .ok_or(LightingError::AllocationLimit)?;
+        if let Some(sky) = &self.packet_sky {
+            bytes = bytes
+                .checked_add(sky.retained_bytes()?)
+                .ok_or(LightingError::AllocationLimit)?;
+        }
         Ok(bytes)
     }
 
@@ -481,5 +795,11 @@ impl CompletedLighting {
     }
     pub fn sky(&self) -> Option<&LightSnapshot> {
         self.sky.as_ref()
+    }
+    pub fn packet_block(&self) -> &LightDataSnapshot {
+        &self.packet_block
+    }
+    pub fn packet_sky(&self) -> Option<&LightDataSnapshot> {
+        self.packet_sky.as_ref()
     }
 }

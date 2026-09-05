@@ -1,15 +1,21 @@
-//! Borrowed visible lighting snapshots to a chunk's packet light fields.
+//! Borrowed frozen lighting snapshots to a chunk's packet light fields.
 //!
-//! This consumes published engine storage, never RawStoredLight. from_ready
-//! carries the lighting owner's coherent block/sky revision and domain fence.
-//! Standalone snapshot callers must establish the equivalent fence themselves.
-//! A visible snapshot alone does not establish send-sync, ticking or Play
-//! readiness. Queued, unpublished layer overrides are deliberately not read.
+//! from_ready carries the lighting owner's coherent revision/domain fence and
+//! frozen queued-over-visible packet selection. new retains the standalone
+//! visible-only behavior; from_data uses an explicitly captured data selection.
+//! Standalone callers establish the equivalent fence themselves. No snapshot
+//! alone establishes send-sync, ticking or Play readiness, and raw disk light
+//! is never accepted in place of a frozen engine-storage view.
 
 use std::fmt;
 
 use crate::world::{
-    lighting::{LightKind, LightSection, owner::ReadyLighting, storage::LightSnapshot},
+    lighting::{
+        LightKind, LightSection,
+        layer::DataLayer,
+        owner::ReadyLighting,
+        storage::{LightDataSnapshot, LightSnapshot},
+    },
     preparation::ChunkAddress,
     storage::chunk::DimensionHeight,
 };
@@ -46,6 +52,27 @@ impl fmt::Display for Error {
 }
 impl std::error::Error for Error {}
 
+#[derive(Clone, Copy)]
+enum Snapshot<'a> {
+    Visible(&'a LightSnapshot),
+    Data(&'a LightDataSnapshot),
+}
+
+impl<'a> Snapshot<'a> {
+    fn kind(self) -> LightKind {
+        match self {
+            Self::Visible(snapshot) => snapshot.kind(),
+            Self::Data(snapshot) => snapshot.kind(),
+        }
+    }
+    fn layer(self, key: LightSection) -> Option<&'a DataLayer> {
+        match self {
+            Self::Visible(snapshot) => snapshot.layer(key),
+            Self::Data(snapshot) => snapshot.layer(key),
+        }
+    }
+}
+
 /// Four small inline masks and exactly admitted update descriptors. No light
 /// payload is cloned: allocated data borrows its leased snapshot and uniform
 /// values are expanded only into the final admitted packet output.
@@ -61,8 +88,8 @@ pub struct PacketLightSnapshot<'a> {
     block_updates: Vec<LightUpdate<'a>>,
     sky_updates: Vec<LightUpdate<'a>>,
     // Keep the complete snapshots borrowed even when every layer is uniform.
-    _block: Option<&'a LightSnapshot>,
-    _sky: Option<&'a LightSnapshot>,
+    _block: Option<Snapshot<'a>>,
+    _sky: Option<Snapshot<'a>>,
 }
 
 impl<'a> PacketLightSnapshot<'a> {
@@ -79,11 +106,11 @@ impl<'a> PacketLightSnapshot<'a> {
         if !ready.has_chunk(position) {
             return Err(Error::MissingChunk);
         }
-        Self::new(
+        Self::from_data(
             position,
             ready.height(),
-            Some(ready.block()),
-            ready.sky(),
+            Some(ready.packet_block()),
+            ready.packet_sky(),
             filters,
             control_bytes,
         )
@@ -98,6 +125,46 @@ impl<'a> PacketLightSnapshot<'a> {
         height: DimensionHeight,
         block: Option<&'a LightSnapshot>,
         sky: Option<&'a LightSnapshot>,
+        filters: ChangedFilters<'_>,
+        control_bytes: usize,
+    ) -> Result<Self, Error> {
+        Self::build(
+            position,
+            height,
+            block.map(Snapshot::Visible),
+            sky.map(Snapshot::Visible),
+            filters,
+            control_bytes,
+        )
+    }
+
+    /// Uses a captured getDataLayerData selection: queued entries override
+    /// visible entries and unsupported queued-only layers remain present. This
+    /// borrows the complete capture and never publishes it as gameplay light.
+    /// Standalone callers retain its layer/metadata admission and source fence.
+    pub fn from_data(
+        position: ChunkAddress,
+        height: DimensionHeight,
+        block: Option<&'a LightDataSnapshot>,
+        sky: Option<&'a LightDataSnapshot>,
+        filters: ChangedFilters<'_>,
+        control_bytes: usize,
+    ) -> Result<Self, Error> {
+        Self::build(
+            position,
+            height,
+            block.map(Snapshot::Data),
+            sky.map(Snapshot::Data),
+            filters,
+            control_bytes,
+        )
+    }
+
+    fn build(
+        position: ChunkAddress,
+        height: DimensionHeight,
+        block: Option<Snapshot<'a>>,
+        sky: Option<Snapshot<'a>>,
         filters: ChangedFilters<'_>,
         control_bytes: usize,
     ) -> Result<Self, Error> {
@@ -241,7 +308,7 @@ fn key(position: ChunkAddress, min_section: i32, index: usize) -> LightSection {
 }
 
 fn classify(
-    snapshot: Option<&LightSnapshot>,
+    snapshot: Option<Snapshot<'_>>,
     filter: Option<&[u8]>,
     position: ChunkAddress,
     min_section: i32,
@@ -295,7 +362,7 @@ fn allocate_updates<'a>(
 }
 
 fn collect<'a>(
-    snapshot: &'a LightSnapshot,
+    snapshot: Snapshot<'a>,
     position: ChunkAddress,
     min_section: i32,
     sections: usize,

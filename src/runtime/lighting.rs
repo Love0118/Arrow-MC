@@ -5,7 +5,9 @@
 use super::{AdmissionError, CpuPool, Job, Lease, Shared, finish_job, lock};
 use crate::world::lighting::{
     LightBlock, LightError, LightKind, LightingSource, SourceLimits, SourceStamp,
-    work::{CompletedLighting, LightingError, LightingLimits, LightingWork, WorkProgress},
+    work::{
+        CompletedLighting, LightingError, LightingLimits, LightingMode, LightingWork, WorkProgress,
+    },
 };
 use crate::world::{loading::ChunkLoadingOwner, preparation::ChunkAddress};
 use std::{
@@ -60,6 +62,7 @@ enum Input {
     Initial {
         source: LightingSource,
         limits: LightingLimits,
+        mode: LightingMode,
     },
     Resume(Box<LightingWork>),
 }
@@ -222,6 +225,21 @@ impl CpuPool {
         source: LightingSource,
         limits: LightingLimits,
     ) -> Result<PendingLighting, AdmissionError> {
+        self.reserve_lighting(source, limits, LightingMode::Fresh)
+    }
+    pub fn try_reserve_lighting_restore(
+        &self,
+        source: LightingSource,
+        limits: LightingLimits,
+    ) -> Result<PendingLighting, AdmissionError> {
+        self.reserve_lighting(source, limits, LightingMode::RestoreSaved)
+    }
+    fn reserve_lighting(
+        &self,
+        source: LightingSource,
+        limits: LightingLimits,
+        mode: LightingMode,
+    ) -> Result<PendingLighting, AdmissionError> {
         let bytes = limits
             .reservation_bytes()
             .map_err(|_| AdmissionError::InvalidInput)?
@@ -229,7 +247,11 @@ impl CpuPool {
             .ok_or(AdmissionError::ByteLimit)?;
         let lease = self.try_reserve(bytes)?;
         Ok(PendingLighting {
-            input: Input::Initial { source, limits },
+            input: Input::Initial {
+                source,
+                limits,
+                mode,
+            },
             growth: LightingGrowth::default(),
             lease,
         })
@@ -244,6 +266,37 @@ impl CpuPool {
         source_limits: SourceLimits,
         limits: LightingLimits,
     ) -> Result<PendingLighting, LightingReserveError> {
+        self.reserve_canonical_lighting(
+            owner,
+            addresses,
+            source_limits,
+            limits,
+            LightingMode::Fresh,
+        )
+    }
+    pub fn try_reserve_canonical_lighting_restore(
+        &self,
+        owner: &ChunkLoadingOwner,
+        addresses: &[ChunkAddress],
+        source_limits: SourceLimits,
+        limits: LightingLimits,
+    ) -> Result<PendingLighting, LightingReserveError> {
+        self.reserve_canonical_lighting(
+            owner,
+            addresses,
+            source_limits,
+            limits,
+            LightingMode::RestoreSaved,
+        )
+    }
+    fn reserve_canonical_lighting(
+        &self,
+        owner: &ChunkLoadingOwner,
+        addresses: &[ChunkAddress],
+        source_limits: SourceLimits,
+        limits: LightingLimits,
+        mode: LightingMode,
+    ) -> Result<PendingLighting, LightingReserveError> {
         let bytes = limits
             .reservation_bytes()
             .map_err(|_| LightingReserveError::Admission(AdmissionError::InvalidInput))?
@@ -255,7 +308,11 @@ impl CpuPool {
         let source = LightingSource::from_canonical(owner, addresses, source_limits)
             .map_err(LightingReserveError::Source)?;
         Ok(PendingLighting {
-            input: Input::Initial { source, limits },
+            input: Input::Initial {
+                source,
+                limits,
+                mode,
+            },
             growth: LightingGrowth::default(),
             lease,
         })
@@ -485,7 +542,15 @@ pub(super) fn run(job: LightingJob, shared: &Shared) {
     // Box storage is covered by sizeof(LightingWork) in reservation_bytes and is
     // only allocated here. It keeps the global queue's concrete job size small.
     let constructed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match input {
-        Input::Initial { source, limits } => LightingWork::new(source, limits).map(Box::new),
+        Input::Initial {
+            source,
+            limits,
+            mode,
+        } => match mode {
+            LightingMode::Fresh => LightingWork::new(source, limits),
+            LightingMode::RestoreSaved => LightingWork::new_restore(source, limits),
+        }
+        .map(Box::new),
         Input::Resume(work) => Ok(work),
     }));
     let (payload, progress) = match constructed {

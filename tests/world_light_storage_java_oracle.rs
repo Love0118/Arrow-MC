@@ -177,7 +177,19 @@ public class LightStorageProbe {
 "##;
 
 fn fixtures() -> String {
-    let mut script = String::from(
+    let mut script = String::new();
+    for domain in ["B", "S"] {
+        writeln!(
+            script,
+            "new {domain}\nuniform implicit_zero 0\nuniform nonzero 4"
+        )
+        .unwrap();
+        writeln!(script, "bytes allocated_zero {}", "00".repeat(LAYER_BYTES)).unwrap();
+        writeln!(script, "queue 5 5 5 implicit_zero\nqueue 6 5 5 allocated_zero\nqueue 7 5 5 nonzero\nsnapshot {domain}_overlay_unsupported").unwrap();
+        script.push_str("clear 5 5 5\nclear 6 5 5\nclear 7 5 5\nstatus 0 0 0 false\nmark\nswap\nwrite 2 2 2 6\nswap\nqueue 0 0 0 implicit_zero\n");
+        writeln!(script, "snapshot {domain}_overlay_implicit_zero\nqueue 0 0 0 allocated_zero\nsnapshot {domain}_overlay_allocated_zero\nqueue 0 0 0 nonzero\nsnapshot {domain}_overlay_nonzero\nclear 0 0 0\nsnapshot {domain}_overlay_clear_falls_back").unwrap();
+    }
+    script.push_str(
         r#"
 new B
 snapshot block_empty
@@ -465,6 +477,30 @@ fn observe(
     label: &str,
     output: &mut Vec<String>,
 ) {
+    // The snapshot exposes getDataLayerData's queued-over-visible view. Keep it
+    // only through this observation so later writes have their original COW
+    // ownership. Java's S row remains the independent expected getter result.
+    let data_snapshot = storage.data_snapshot().unwrap();
+    assert_eq!(
+        data_snapshot.kind(),
+        storage.kind(),
+        "{label} data snapshot kind"
+    );
+    let data_sections: BTreeSet<_> = data_snapshot.sections().collect();
+    let expected_data_sections: BTreeSet<_> = candidates
+        .iter()
+        .copied()
+        .filter(|&node| storage.data_layer_data(node).is_some())
+        .collect();
+    assert_eq!(
+        data_sections, expected_data_sections,
+        "{label} data snapshot section presence"
+    );
+    assert_eq!(
+        data_snapshot.sections().count(),
+        data_sections.len(),
+        "{label} unique data snapshot sections"
+    );
     output.push(format!(
         "D|{label}|{}|{}|{}",
         kind(storage.kind()),
@@ -477,7 +513,13 @@ fn observe(
         let state_type = storage.section_type(node);
         let up = storage.layer(node, true);
         let visible = storage.layer(node, false);
-        let data = storage.data_layer_data(node);
+        let data = data_snapshot.layer(node);
+        assert_eq!(
+            repr(data),
+            repr(storage.data_layer_data(node)),
+            "{label} {} captured data getter",
+            key(node)
+        );
         if state_type == SectionType::Empty && up.is_none() && visible.is_none() && data.is_none() {
             continue;
         }

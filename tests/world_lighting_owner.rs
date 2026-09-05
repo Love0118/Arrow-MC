@@ -67,11 +67,21 @@ struct Fixture {
     store: ChunkStore,
 }
 
+#[derive(Clone, Copy)]
+struct SavedLayers {
+    correct: bool,
+    block: Option<u8>,
+    sky: Option<u8>,
+}
+
 impl Fixture {
     fn new(sky: bool, states: &[&str]) -> Self {
         Self::with_slots(sky, states, 8)
     }
     fn with_slots(sky: bool, states: &[&str], max_jobs: usize) -> Self {
+        Self::configured(sky, states, max_jobs, None)
+    }
+    fn configured(sky: bool, states: &[&str], max_jobs: usize, saved: Option<SavedLayers>) -> Self {
         let mut bundle = registry_fixture::Fixture::from_data(
             json!({
                 "state_count":4,"state_flags":[1,0,0,0],"blocks":[
@@ -94,14 +104,26 @@ impl Fixture {
         fs::create_dir(&path).unwrap();
         let mut region = vec![0; 8192];
         for (x, state) in states.iter().enumerate() {
-            let section = compound([
+            let mut section = compound([
                 ("Y", Tag::Byte(0)),
                 (
                     "block_states",
                     compound([("palette", Tag::List(vec![Tag::String((*state).into())]))]),
                 ),
             ]);
-            let root = NamedTag {
+            if let Some(saved) = saved {
+                let Tag::Compound(fields) = &mut section else {
+                    unreachable!()
+                };
+                for (key, value) in [("BlockLight", saved.block), ("SkyLight", saved.sky)] {
+                    if let Some(value) = value {
+                        fields
+                            .insert(key.into(), Tag::ByteArray(vec![value as i8; 2048]))
+                            .unwrap();
+                    }
+                }
+            }
+            let mut root = NamedTag {
                 name: "canonical lighting owner fixture".into(),
                 tag: compound([
                     ("DataVersion", Tag::Int(DATA_VERSION)),
@@ -111,6 +133,14 @@ impl Fixture {
                     ("sections", Tag::List(vec![section])),
                 ]),
             };
+            if let Some(saved) = saved {
+                let Tag::Compound(fields) = &mut root.tag else {
+                    unreachable!()
+                };
+                fields
+                    .insert("isLightOn".into(), Tag::Byte(i8::from(saved.correct)))
+                    .unwrap();
+            }
             let mut bytes = Vec::new();
             nbt::write_named(&root, &mut bytes, nbt::Limits::default()).unwrap();
             let sector = region.len() / 4096;
@@ -806,5 +836,181 @@ fn stale_adopted_domain_keeps_canonical_resident_payload_until_cancel_after_unlo
         assert_eq!(fixture.owner.stats().resident_bytes, 0);
         assert_eq!(fixture.resident.stats().used_bytes, 0);
         assert_eq!(fixture.resident.stats().results, 0);
+    });
+}
+
+#[test]
+fn restored_queued_only_saved_layers_survive_resident_adoption_and_real_packet_transport() {
+    use arrow_mc::server::{
+        chunk_packet::LightUpdate,
+        transport::{ConnectionTransport, TransportLimits},
+    };
+    use tokio::{
+        io::AsyncReadExt,
+        net::{TcpListener, TcpStream},
+    };
+    run(async {
+        // All-air terrain supplies no support section. Saved arrays still exist
+        // in the packet-facing queue, independently of gameplay-visible layers.
+        let mut fixture = Fixture::configured(
+            true,
+            &["minecraft:air"],
+            1,
+            Some(SavedLayers {
+                correct: true,
+                block: Some(0),
+                sky: Some(0x55),
+            }),
+        );
+        fixture.load(0).await;
+        let mut domain = LightingDomain::new();
+        let pending = domain
+            .begin_restore(
+                &fixture.owner,
+                &[address(0)],
+                SourceLimits::default(),
+                limits(true),
+                &fixture.cpu,
+            )
+            .unwrap();
+        assert!(domain.ready(&fixture.owner).is_none());
+        let completion = finish(pending).await;
+        domain
+            .accept(&fixture.owner, completion, &fixture.resident)
+            .unwrap();
+        assert_eq!(fixture.cpu.stats().in_flight, 0);
+        assert_eq!(fixture.cpu.stats().reserved_buffer_bytes, 0);
+        let resident_bytes = fixture.resident.stats().used_bytes;
+        assert!(resident_bytes > 0);
+        {
+            let ready = domain.ready(&fixture.owner).unwrap();
+            assert_eq!(ready.light_level(LightKind::Block, block(8)), Some(0));
+            assert_eq!(ready.light_level(LightKind::Sky, block(8)), Some(15));
+            let bridge = PacketLightSnapshot::from_ready(
+                &ready,
+                address(0),
+                ChangedFilters::default(),
+                4096,
+            )
+            .unwrap();
+            let light = bridge.light_data();
+            assert_eq!(light.block_mask, &[2]);
+            assert_eq!(light.sky_mask, &[2]);
+            assert_eq!(light.empty_block_mask, &[0]);
+            assert_eq!(light.empty_sky_mask, &[0]);
+            let [LightUpdate::Bytes(block_bytes)] = light.block_updates else {
+                panic!("saved zero layer must remain allocated data")
+            };
+            assert_eq!(*block_bytes, &[0; 2048]);
+            let [LightUpdate::Bytes(sky_bytes)] = light.sky_updates else {
+                panic!("saved sky layer must be queued packet data")
+            };
+            assert_eq!(*sky_bytes, &[0x55; 2048]);
+            let mut sections = Vec::with_capacity(65536);
+            fixture
+                .owner
+                .section(address(0), 0)
+                .unwrap()
+                .write_network(&mut sections)
+                .unwrap();
+            let packet = bridge.chunk_packet(&[], &sections, &[]);
+            let encoded = chunk_packet::encode(
+                &packet,
+                fixture.registry.block_entity_type_count(),
+                chunk_packet::Limits::default(),
+            )
+            .unwrap();
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let (peer, accepted) = tokio::join!(
+                TcpStream::connect(listener.local_addr().unwrap()),
+                listener.accept()
+            );
+            let mut peer = peer.unwrap();
+            let mut transport = ConnectionTransport::new(
+                accepted.unwrap().0,
+                Arc::clone(&fixture.cpu),
+                TransportLimits::default(),
+            );
+            transport.write_packet(&encoded).await.unwrap();
+            let actual = timeout(Duration::from_secs(2), async {
+                let mut length = 0usize;
+                for offset in 0..3 {
+                    let byte = peer.read_u8().await.unwrap();
+                    length |= usize::from(byte & 127) << (7 * offset);
+                    if byte & 128 == 0 {
+                        break;
+                    }
+                    assert!(offset < 2);
+                }
+                let mut bytes = vec![0; length];
+                peer.read_exact(&mut bytes).await.unwrap();
+                bytes
+            })
+            .await
+            .unwrap();
+            assert_eq!(actual, encoded);
+            assert_eq!(fixture.cpu.stats().in_flight, 0);
+            assert_eq!(fixture.resident.stats().used_bytes, resident_bytes);
+        }
+        domain.cancel();
+        assert_eq!(fixture.resident.stats().used_bytes, 0);
+    });
+}
+
+#[test]
+fn restored_packet_selection_respects_no_sky_dimension_and_owner_revision() {
+    use arrow_mc::server::chunk_packet::LightUpdate;
+    run(async {
+        let mut fixture = Fixture::configured(
+            false,
+            &["minecraft:air"],
+            1,
+            Some(SavedLayers {
+                correct: true,
+                block: Some(0x33),
+                sky: Some(0x55),
+            }),
+        );
+        fixture.load(0).await;
+        let mut domain = LightingDomain::new();
+        let pending = domain
+            .begin_restore(
+                &fixture.owner,
+                &[address(0)],
+                SourceLimits::default(),
+                limits(false),
+                &fixture.cpu,
+            )
+            .unwrap();
+        domain
+            .accept(&fixture.owner, finish(pending).await, &fixture.resident)
+            .unwrap();
+        {
+            let ready = domain.ready(&fixture.owner).unwrap();
+            assert_eq!(ready.light_level(LightKind::Block, block(8)), Some(0));
+            assert_eq!(ready.light_level(LightKind::Sky, block(8)), None);
+            let bridge = PacketLightSnapshot::from_ready(
+                &ready,
+                address(0),
+                ChangedFilters::default(),
+                4096,
+            )
+            .unwrap();
+            let light = bridge.light_data();
+            assert_eq!(light.block_mask, &[2]);
+            let [LightUpdate::Bytes(bytes)] = light.block_updates else {
+                panic!("saved data")
+            };
+            assert_eq!(*bytes, &[0x33; 2048]);
+            assert!(light.sky_updates.is_empty());
+            assert_eq!(light.sky_mask, &[0]);
+            assert_eq!(light.empty_sky_mask, &[0]);
+        }
+        let held = fixture.resident.stats().used_bytes;
+        assert!(fixture.owner.remove_demand(address(0)));
+        assert!(domain.ready(&fixture.owner).is_none());
+        assert_eq!(fixture.resident.stats().used_bytes, held);
+        domain.cancel();
+        assert_eq!(fixture.resident.stats().used_bytes, 0);
     });
 }

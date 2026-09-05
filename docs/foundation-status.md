@@ -84,6 +84,31 @@ source `e0b45930dca1da4ac9d66b6b37cf7cfe5369e692`를 beta에 전달했고,
 debug/release 각각630통과·0실패·37선택제외와 format·Clippy·tooling·의존성 고지 검사를 통과했다.
 이전 `5e14ec7`의612개 성공과 구분한 원본·집계는 로컬 `Roadmap/reviews/resident-lighting-ci-e0b4593*`에 있다.
 
+## 저장 조명의 초기화·재계산 선택과 packet 데이터
+
+`LightingDomain::begin_restore`와 `LightingWork::new_restore`가 canonical resident의 원래 저장 row 순서를 읽는다.
+필요한 retain·block/sky queue를 준비하고 source/support·UPDATE·enable/retain 해제·조건부 전파를 진행한다.
+재사용 조건은 저장 status가 Light/Spawn/Full이고 lightCorrect가 true인 경우다. 배열이 완전한지 새 조건을 넣지 않고,
+재계산할 청크의 저장 배열도 먼저 staging한다. source의 저장 status/flag는 원본으로 유지한다.
+
+`LightDataSnapshot`은 packet/저장 조회에서 queued를 visible보다 먼저 선택하며, 지원 section이 없는 queued-only layer도 보존한다.
+게임 내 밝기는 기존 visible snapshot을 사용한다. implicit zero·allocated-zero 차이를 packet mask에서도 유지한다.
+완료 전에 양쪽 snapshot의 allocation을 승인하며, 실패하면 부분 완료를 노출하지 않는다.
+실패 시 Vec보다 예약이 먼저 반환되던 storage 임시값 정리 순서도 수정했다.
+
+실제 Java와23개 복원 transaction을 비교했다. 인접 두 청크의 재사용/재계산이 다른 경우를 포함하며,
+무제한·7단위 실행의 합계13,148,160 visible nibble·1,724 packet layer/7,061,504 nibble과1,865회 재개가 일치했다.
+16개 잘못된 저장 배열 길이도 실제 Java/Rust에서 거부했다. Java의138개 phase 관찰은 Rust 내부 callback timing 검증으로 확대하지 않는다.
+두 독립 리뷰와 실제 restore→resident 이전→packet→한 CPU 슬롯의 TCP 회귀를 통과했다.
+
+로컬 전체 debug/release 각각655통과·38선택제외, strict Clippy·format을 확인했다. 이 source의 native CI는 별도로 기록한다.
+대표 resident 시험의 현재 CPU 예약은8,392,608bytes, resident allowance는237,484bytes다.
+게임용 visible과 packet용 데이터가 참조하는 같은 layer도 보수적으로 각각 청구하므로 e0b4593의120,156bytes와 구분한다.
+실제 layer payload를 두 번 복사한 값이나 RSS 측정은 아니다.
+
+선택 영역의 불변 복원 transaction을 구현했으며, 임의 Threaded 작업의1,000개 batch·priority·pending marker,
+mutable chunk lightCorrect/status 게시·ticket/send-sync·전체 Play coordinator는 남아 있다.
+
 ## Heightmap·시야·chunk packet 추가
 
 [여섯 heightmap·전체 view2..32·chunk/light wire](chunk-wire-heightmap-view.md)를 구현했다.

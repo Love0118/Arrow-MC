@@ -115,6 +115,7 @@ impl LightDirection {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LightError {
     MissingChunk,
+    MissingStoredLight,
     InvalidColumn,
     ContextMismatch,
     InvalidState,

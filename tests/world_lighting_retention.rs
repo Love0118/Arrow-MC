@@ -181,7 +181,9 @@ fn completed_charge_owns_source_and_layers_but_not_discarded_engine_reservations
         + source_bytes
         + 4 * size_of::<usize>()
         + completed.block().retained_bytes().unwrap()
-        + completed.sky().unwrap().retained_bytes().unwrap();
+        + completed.sky().unwrap().retained_bytes().unwrap()
+        + completed.packet_block().retained_bytes().unwrap()
+        + completed.packet_sky().unwrap().retained_bytes().unwrap();
     assert_eq!(retained, expected);
     assert_eq!(completed.source().stamp(), source_id);
     assert!(retained < requested / 10);

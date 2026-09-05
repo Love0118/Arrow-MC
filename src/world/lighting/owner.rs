@@ -1,10 +1,10 @@
 //! Current-domain admission and a coherent block/sky publication boundary.
 //!
-//! This owner publishes completed initial relighting only. It does not establish
+//! This owner publishes completed initialization and lighting. It does not establish
 //! chunk status, ticking, player visibility, or Vanilla's pending-task markers.
 use super::{
     LightBlock, LightError, LightKind, SourceLimits, SourceStamp,
-    storage::LightSnapshot,
+    storage::{LightDataSnapshot, LightSnapshot},
     work::{CompletedLighting, LightingLimits},
 };
 use crate::{
@@ -73,6 +73,31 @@ impl LightingDomain {
         limits: LightingLimits,
         cpu: &CpuPool,
     ) -> Result<PendingLighting, LightingOwnerError> {
+        self.begin_mode(owner, addresses, source_limits, limits, cpu, false)
+    }
+
+    /// Restore persisted rows before initialization and conditional relighting.
+    /// Saved flags alone never bypass this domain's completion/source fence.
+    pub fn begin_restore(
+        &mut self,
+        owner: &ChunkLoadingOwner,
+        addresses: &[ChunkAddress],
+        source_limits: SourceLimits,
+        limits: LightingLimits,
+        cpu: &CpuPool,
+    ) -> Result<PendingLighting, LightingOwnerError> {
+        self.begin_mode(owner, addresses, source_limits, limits, cpu, true)
+    }
+
+    fn begin_mode(
+        &mut self,
+        owner: &ChunkLoadingOwner,
+        addresses: &[ChunkAddress],
+        source_limits: SourceLimits,
+        limits: LightingLimits,
+        cpu: &CpuPool,
+        restore: bool,
+    ) -> Result<PendingLighting, LightingOwnerError> {
         self.cancel();
         if addresses.is_empty() {
             return Err(LightingOwnerError::Source(LightError::InvalidLimits));
@@ -80,12 +105,15 @@ impl LightingDomain {
         if limits.has_sky_light() != owner.has_sky_light() {
             return Err(LightingOwnerError::WrongSkyMode);
         }
-        let pending = cpu
-            .try_reserve_canonical_lighting(owner, addresses, source_limits, limits)
-            .map_err(|error| match error {
-                LightingReserveError::Source(error) => LightingOwnerError::Source(error),
-                LightingReserveError::Admission(error) => LightingOwnerError::Admission(error),
-            })?;
+        let pending = if restore {
+            cpu.try_reserve_canonical_lighting_restore(owner, addresses, source_limits, limits)
+        } else {
+            cpu.try_reserve_canonical_lighting(owner, addresses, source_limits, limits)
+        }
+        .map_err(|error| match error {
+            LightingReserveError::Source(error) => LightingOwnerError::Source(error),
+            LightingReserveError::Admission(error) => LightingOwnerError::Admission(error),
+        })?;
         self.current = Some(pending.source_stamp());
         Ok(pending)
     }
@@ -193,5 +221,11 @@ impl ReadyLighting<'_> {
     }
     pub(crate) fn sky(&self) -> Option<&LightSnapshot> {
         self.completed.sky()
+    }
+    pub(crate) fn packet_block(&self) -> &LightDataSnapshot {
+        self.completed.packet_block()
+    }
+    pub(crate) fn packet_sky(&self) -> Option<&LightDataSnapshot> {
+        self.completed.packet_sky()
     }
 }
