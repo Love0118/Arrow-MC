@@ -165,39 +165,60 @@ async fn running_decode_cancellation_and_cancelled_ready_result_keep_correct_own
     let cpu = pool();
     let payload = bytes();
     let registries = Arc::new(registry::storage_test_snapshot());
+    let reserve = || {
+        let mut pending = cpu
+            .try_reserve_chunk_decode(
+                key(),
+                StreamVersion::Raw,
+                payload.len(),
+                Arc::clone(&registries),
+                DimensionHeight::new(-64, 384).unwrap(),
+                limits(),
+            )
+            .unwrap();
+        pending.compressed_mut().copy_from_slice(&payload);
+        pending
+    };
     let (gate, started, _release) = gate();
-    let mut pending = cpu
-        .try_reserve_chunk_decode(
-            key(),
-            StreamVersion::Raw,
-            payload.len(),
-            Arc::clone(&registries),
-            DimensionHeight::new(-64, 384).unwrap(),
-            limits(),
-        )
-        .unwrap();
-    pending.compressed_mut().copy_from_slice(&payload);
-    let task = pending.submit_with_gate(Arc::clone(&gate)).unwrap();
+    let task = reserve().submit_with_gate(Arc::clone(&gate)).unwrap();
     started.recv_timeout(Duration::from_secs(5)).unwrap();
     drop(task);
     assert_eq!(cpu.stats().running, 1);
     assert_eq!(cpu.stats().in_flight, 1);
     gate.release();
     until(|| cpu.stats().in_flight == 0).await;
-    let mut pending = cpu
-        .try_reserve_chunk_decode(
-            key(),
-            StreamVersion::Raw,
-            payload.len(),
-            registries,
-            DimensionHeight::new(-64, 384).unwrap(),
-            limits(),
-        )
+    // Stop exactly after finish_job but before sender.send: cancellation wakes
+    // the receiver while the worker still owns the constructed result's lease.
+    let (publication_gate, publication_started, _publication_release) = self::gate();
+    let mut racing = reserve()
+        .submit_with_publication_gate(Arc::clone(&publication_gate))
         .unwrap();
-    pending.compressed_mut().copy_from_slice(&payload);
-    let mut ready = pending.submit().unwrap();
+    publication_started
+        .recv_timeout(Duration::from_secs(5))
+        .unwrap();
+    assert_eq!(cpu.stats().completed_jobs, 2);
+    assert_eq!(cpu.stats().in_flight, 1);
+    let reserved = limits()
+        .job_bytes_for(StreamVersion::Raw, payload.len())
+        .unwrap();
+    assert_eq!(cpu.stats().reserved_buffer_bytes, reserved);
+    racing.cancel();
+    assert!(matches!(
+        racing.wait().await,
+        Err(ChunkLoadError::Cancelled)
+    ));
+    assert_eq!(cpu.stats().in_flight, 1);
+    assert_eq!(cpu.stats().reserved_buffer_bytes, reserved);
+    publication_gate.release();
+    until(|| cpu.stats().in_flight == 0).await;
+    assert_eq!(cpu.stats().reserved_buffer_bytes, 0);
+
+    // Separately establish actual delivery before checking cancellation of an
+    // already-ready result. Cancelling wait must drop its retained lease now.
+    let mut ready = reserve().submit().unwrap();
     cpu.close();
-    until(|| cpu.stats().completed_jobs == 2).await;
+    until(|| ready.has_delivered_result_for_test()).await;
+    assert_eq!(cpu.stats().completed_jobs, 3);
     assert_eq!(cpu.stats().in_flight, 1);
     ready.cancel();
     assert!(matches!(ready.wait().await, Err(ChunkLoadError::Cancelled)));

@@ -164,6 +164,8 @@ storage를 packet으로 연결한 성공과 실제 전송의 인과관계·BE up
 - [독립 자원·추상화 검수](../../Roadmap/reviews/lighting-optimization.md)
 - [Skylight 실제 결과](../../Roadmap/research/lighting-sky-results.md)
 - [Threaded 통합의 후속 계약](../../Roadmap/research/lighting-next-prerequisites.md)
+- [저장 light 복원·queued 우선순위·PRE/POST 계약](../../Roadmap/research/lighting-saved-restore-contract.md)
+- [resident 조명 예산 이전 계약](../../Roadmap/research/lighting-resident-budget-contract.md)
 
 공식 관측은 실제 `WorldLoader`·`ProtoChunk`·`LevelLightEngine` 등을 호출한다. 게임 서버나 사용자 계정 접속을 실행한 검증으로 확대하지 않는다.
 선택 oracle 재현에는 `ARROW_MC_JAVA_REFERENCE_ROOT`와 현재 v3 snapshot의 독립 hash를 사용한다. 변경한 영역의 target만 실행한다.

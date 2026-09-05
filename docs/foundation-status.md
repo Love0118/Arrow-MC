@@ -36,7 +36,12 @@ Python **57개 통과·2개 제외**와 고정 의존성 **129개** 고지 검�
 8개 lighting/packet/registry 선택 oracle, 갱신한 chunk·heightmap oracle2개와 새 combined lighting oracle를 별도 실행했다.
 combined oracle는 실제 Java `LevelLightEngine`의 2영역·216개 전체 layer·884,736 nibble을 무제한/7단위 실행과 각각 대조했다.
 독립 정확성·자원/추상화 리뷰 두 역할이 kernel, worker 취소·복구, source domain과 packet 수명을 검수했다.
-이 배치의 native CI는 source commit을 고정한 뒤 별도 기록한다.
+첫 source `9a15a52`의 [CI33972450784](https://github.com/Love0118/Arrow-MC/actions/runs/33972450784)에서
+Linux ARM64/x86_64와 macOS ARM64는 debug/release 각각612개·37선택제외를 통과했다.
+Windows debug도 통과했지만 release는 기존 저장 취소 테스트의 완료 counter/실제 결과 전달 사이 경쟁에서 실패했다.
+counter를 결과 전달 완료로 가정한 테스트의 동기화 문제였다. test-only gate로 결과 전달 직전 취소 시 예약이 남음을
+검증하고, 실제 receiver에 결과가 있는 경우에만 즉시 환급을 확인하도록 수정했다. production 동작은 바꾸지 않았다.
+수정한 storage debug/release 각각2개와 해당 release 테스트100회 반복을 통과했다. 후속 native 재검증은 별도로 기록한다.
 
 새 dependency·crate·world trait·per-world CPU pool은 추가하지 않았다. 기존 native 의존성 cache가 있는 로컬 all-target compile은
 debug30.05s/release53.42s였다. 테스트 포함 총65.08s/87.72s이며 clean build나 동일 소스 성능 개선 수치가 아니다.

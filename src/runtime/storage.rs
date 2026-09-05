@@ -40,6 +40,8 @@ pub(super) struct DecodeChunk {
     sender: oneshot::Sender<Result<ChunkDecodeOutput, ChunkLoadError>>,
     #[cfg(test)]
     gate: Option<Arc<super::TestGate>>,
+    #[cfg(test)]
+    publication_gate: Option<Arc<super::TestGate>>,
 }
 pub struct ChunkDecodeTask {
     receiver: Option<oneshot::Receiver<Result<ChunkDecodeOutput, ChunkLoadError>>>,
@@ -102,6 +104,8 @@ impl PendingChunkDecode {
         self.enqueue(
             #[cfg(test)]
             None,
+            #[cfg(test)]
+            None,
         )
     }
 
@@ -110,12 +114,21 @@ impl PendingChunkDecode {
         self,
         gate: Arc<super::TestGate>,
     ) -> Result<ChunkDecodeTask, AdmissionError> {
-        self.enqueue(Some(gate))
+        self.enqueue(Some(gate), None)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn submit_with_publication_gate(
+        self,
+        gate: Arc<super::TestGate>,
+    ) -> Result<ChunkDecodeTask, AdmissionError> {
+        self.enqueue(None, Some(gate))
     }
 
     fn enqueue(
         self,
         #[cfg(test)] gate: Option<Arc<super::TestGate>>,
+        #[cfg(test)] publication_gate: Option<Arc<super::TestGate>>,
     ) -> Result<ChunkDecodeTask, AdmissionError> {
         let (sender, receiver) = oneshot::channel();
         let shared = Arc::clone(&self.lease.shared);
@@ -130,6 +143,8 @@ impl PendingChunkDecode {
                 sender,
                 #[cfg(test)]
                 gate,
+                #[cfg(test)]
+                publication_gate,
             }));
             state.stats.queued += 1;
         }
@@ -142,6 +157,15 @@ impl PendingChunkDecode {
 }
 
 impl ChunkDecodeTask {
+    #[cfg(test)]
+    pub(crate) fn has_delivered_result_for_test(&self) -> bool {
+        // Inspect actual delivery without consuming or replacing the channel.
+        // Worker statistics are updated before sender.send owns the result.
+        self.receiver
+            .as_ref()
+            .is_some_and(|receiver| !receiver.is_empty())
+    }
+
     pub async fn wait(mut self) -> Result<ChunkDecodeOutput, ChunkLoadError> {
         self.wait_mut().await
     }
@@ -324,6 +348,8 @@ pub(super) fn decode_chunk(
     shared: &Shared,
 ) {
     #[cfg(test)]
+    let publication_gate = job.publication_gate.clone();
+    #[cfg(test)]
     if let Some(gate) = &job.gate {
         gate.block();
     }
@@ -404,5 +430,9 @@ pub(super) fn decode_chunk(
         }
     };
     finish_job(shared);
+    #[cfg(test)]
+    if let Some(gate) = publication_gate {
+        gate.block();
+    }
     let _ = sender.send(completion);
 }
