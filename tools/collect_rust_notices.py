@@ -149,7 +149,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
-    outputs, count = collect()
+    try:
+        outputs, count = collect()
+    except subprocess.CalledProcessError as error:
+        raise SystemExit(
+            f"Cargo metadata failed with exit code {error.returncode}. "
+            "The offline notice check needs every locked platform package; "
+            "prepare the cache with `cargo fetch --locked`.\n"
+            f"{error.stderr or str(error)}"
+        ) from None
     for name, content in outputs.items():
         path = DESTINATION / name
         if args.check:

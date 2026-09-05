@@ -58,7 +58,9 @@ jobs:
         run: cargo test --locked --release --all-targets --timings
       - name: Verify dependency license notices
         if: matrix.runner == 'ubuntu-24.04'
-        run: python3 tools/collect_rust_notices.py --check
+        run: |
+          cargo fetch --locked
+          python3 tools/collect_rust_notices.py --check
 
   tooling:
     runs-on: ubuntu-24.04

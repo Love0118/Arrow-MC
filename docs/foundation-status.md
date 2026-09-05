@@ -32,8 +32,10 @@ public Server를 실제 TCP로 구동하여 local mock online 인증·암호화�
 Java 실대조: packet scalar312,405개, login213개, crypto/auth 각1개 oracle suite, scheduled tick332trace.
 configuration fixture77개는70개 serverbound 관찰과7개 clientbound 관찰이며, Rust는 그중 구현한6개 clientbound codec을 비교한다.
 FinishConfiguration은 관찰만 했고 구현 완료로 표시하지 않는다. 실제 snapshot TCP에서도 known-pack omission/full fallback의432payload와 tags를 검증했다.
-Windows 로컬 전체332debug/332release·선택16제외, Clippy·format·Python38개 중36통과/2조건부제외,
+Windows 로컬 전체332debug/332release·선택16제외, Clippy·format·Python39개 중37통과/2조건부제외,
 새 실제 JVM·snapshot6개 suite의 release 명시적 실행을 통과했다. 최종 commit의 네 native CI는 별도 확인 후 기록한다.
+최초 `c6572a2` CI의 Linux x86_64는 Rust 검증을 통과한 뒤 offline 고지 검사의 다른 플랫폼 package cache 누락으로 실패했다.
+검사 전에 `cargo fetch --locked`를 수행하도록 수정하고, 같은 오류의 Cargo stderr를 보이는 회귀 검증을 추가했다.
 
 리뷰에서 session UUID reset 시점·false shutdown 알림·profile property 묶음 순서·CPU 대기 중 read timeout·
 보낸 buffer 장기 보관 문제를 수정했다. known-pack 문자열 전체 보관을 없애고 검증 가능한 byte bound로 반복 decoding을 줄였다.

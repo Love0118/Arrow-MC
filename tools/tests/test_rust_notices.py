@@ -3,6 +3,8 @@
 import hashlib
 import importlib.util
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -78,6 +80,18 @@ class RustNoticeTests(unittest.TestCase):
         self.write("README.md", b"A description is not a license")
         with self.assertRaisesRegex(ValueError, "Missing upstream license notice"):
             collector.package_notices(self.package)
+
+    def test_cli_reports_cargo_stderr_and_cache_preparation(self):
+        diagnostic = 'error: failed to download `r-efi v6.0.0`\nCaused by:\n  --offline was specified\n'
+        failure = subprocess.CalledProcessError(101, ["cargo", "metadata"], stderr=diagnostic)
+        with patch.object(sys, "argv", ["collect_rust_notices.py", "--check"]), \
+                patch.object(collector.subprocess, "run", side_effect=failure), \
+                self.assertRaises(SystemExit) as result:
+            collector.main()
+        message = str(result.exception)
+        self.assertIn("exit code 101", message)
+        self.assertIn("cargo fetch --locked", message)
+        self.assertIn(diagnostic, message)
 
 
 if __name__ == "__main__":
