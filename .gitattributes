@@ -7,3 +7,9 @@
 *.toml text eol=lf
 *.yml text eol=lf
 Cargo.lock text eol=lf
+*.tsv text eol=lf
+# Preserve the hash-pinned upstream Unicode files byte for byte on all hosts.
+/third_party/unicode/** -text
+# Upstream SpecialCasing.txt intentionally includes a terminal blank line.
+/third_party/unicode/16.0.0/* -whitespace
+/src/unicode_names/data/*.bin binary

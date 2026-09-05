@@ -4,7 +4,7 @@ Minecraft Java Edition **26.3**의 공식 서버를 소스로 조사하면서 **
 Java 디컴파일본과 실제 실행 결과를 동작 기준으로 삼고, Pumpkin에서는 검증한 구현 아이디어와 최적화를 선별적으로 참고합니다.
 출처와 코드 재사용 조건은 [출처 정책](docs/provenance-policy.md)에 기록합니다.
 
-현재 단계는 **전체 항목 조사와 데이터 기반 구현 진행 중**입니다. Rust NBT binary·VarInt/VarLong codec이 있으며 서버 런타임과 게임 기능은 아직 없습니다.
+현재 단계는 **전체 항목 조사와 데이터 기반 구현 진행 중**입니다. Rust NBT binary·SNBT·VarInt/VarLong codec이 있으며 서버 런타임과 게임 기능은 아직 없습니다.
 [설계 기준](docs/architecture.md)과 [Vanilla/Pumpkin 비교·최적화 계획](docs/optimization-plan.md)에 지원 범위,
 동기·비동기 실행 경계, 가져올 최적화와 직접 가져오지 않을 동작을 정리했습니다.
 
@@ -20,7 +20,8 @@ tick 병렬화는 초기에 단일 스레드 대조 경로와 함께 개발할 �
 
 Rust `1.96.0`, 단일 library package, 외부 Rust dependency 0개로 시작합니다.
 `src/nbt`는 모든 binary tag·Java modified UTF-8·mixed list·named/network root·자원 제한을 처리합니다.
-`src/wire`는 VarInt/VarLong을 처리합니다. SNBT·NBT path/ops·압축·registry/component와 item gameplay는 아직 구현 전입니다.
+`src/snbt`는 현대 SNBT parser·compact/pretty writer와 UTF-16 진단을 처리합니다. [범위·자원 정책·대조 근거](docs/snbt.md)를 별도로 기록합니다.
+`src/wire`는 VarInt/VarLong을 처리합니다. NBT path/ops·압축·registry/component와 item gameplay는 아직 구현 전입니다.
 로컬 디코더 메모리 예산은 요청한 backing allocation의 누계이며 RSS 상한을 뜻하지 않습니다. writer는 추가 출력 길이를 제한합니다.
 
 ```powershell

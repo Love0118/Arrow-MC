@@ -9,6 +9,10 @@
 - `src/nbt`: 13 binary tag ID, UTF-16 값과 Java modified UTF-8, named/network root, heterogeneous list wrapper와
   wrapper 모양 compound escaping, 중복 key 마지막 값, Java float/double zero·NaN 및 equality,
   quota·요청 allocation·512 depth·출력 길이 제한, 실패 시 slice/추가 출력 rollback.
+- `src/snbt`: 현대 SNBT 전체 문법을 대상으로 한 UTF-16 parser, compact/pretty writer, translation key·동적 인수,
+  별도 입력·할당·출력 제한. [SNBT 범위와 대조 자료](snbt.md)에 관찰 사례와 API 경계를 기록했다.
+- `src/unicode_names`: 공식 Unicode16 데이터에서 만든 읽기 전용 1,352,711-byte lookup. 전체 Java25 이름·대문자·hex digit 대조,
+  [출처와 고지](unicode-data.md) 보존. 입력마다 heap map을 만들지 않는다.
 - 한 개 Rust library package, Rust 1.96.0, unsafe 금지, 외부 Rust dependency 0개.
 - 공식 JAR/source/resource/registry/packet 발견 목록과 lock→metadata→bundler→inner JAR→report provenance 검증 도구.
 
@@ -18,12 +22,16 @@ Windows x86_64, Rust1.96.0/Java25에서 다음을 실행했다.
 
 | 검증 | 결과와 범위 |
 | --- | --- |
-| `cargo test --locked --all-targets` | 24통과: NBT18 + wire6. Java oracle1개는 명시적 ignored |
-| `cargo test --locked --release --all-targets --timings` | 동일24통과. foundation release 검증이며 서버 부하 benchmark 아님 |
+| `cargo test --locked --all-targets` | 56통과, live Java oracle3개는 명시적 ignored |
+| `cargo test --locked --release --all-targets --timings` | 동일56통과. foundation release 검증이며 서버 부하 benchmark 아님 |
 | `cargo test --locked --test wire_java_oracle -- --ignored --nocapture` | 공식26.3-pre-2 Java VarInt/VarLong15,420사례 실제 비교 통과 |
+| SNBT frozen oracle | 실제 JVM 관찰7,018개: parser7,005개의 typed value·cursor·오류 key/인수, compact2,063개, 깊이 정책6개 통과; 항목 간 중복 있음 |
+| SNBT live writer oracle | Java float71,168개와 pretty38개 실제 비교 통과 |
+| Unicode live oracle | 이름 범위1,114,112 code points·canonical294,579개·lookup786,584건·BMP hex65,536 units·비ASCII uppercase1,113,984개, 불일치0 |
 | `cargo clippy --locked --all-targets -- -D warnings` | 통과 |
 | `cargo fmt --all --check` | 통과 |
-| `python -m unittest discover -s tools/tests -v` | 10통과, 입력 무결성·누락 source·stale report regression 포함 |
+| `python -m unittest discover -s tools/tests -v` | 19통과, opt-in Unicode oracle1개 skipped. 별도 opt-in 실행의6개 테스트는 전부 통과 |
+| Unicode 생성기·SNBT fixture exporter `--check` | 고정 데이터 hash·재생성 일치,7,018개 fixture 최신성 통과 |
 | inventory `--refresh-reports`, `--check` | 공식 generator 실행과5035Java/9893resources/95registries/7053entries/259packets 최신성 확인 |
 
 정확성 리뷰어는 별도 공식 JVM probe와 Rust review harness로 MUTF8·혼합 list·512/513 깊이·중복 key·NaN을 확인했다.
@@ -31,9 +39,21 @@ NBT equality에서 발견한 NaN/±0 문제를 수정했다. 최적화 리뷰어
 보고서를 버전/JAR에 묶지 못하던 도구 문제를 regression test와 함께 수정했다.
 리뷰 자료는 형제 `Roadmap/reviews/`에 있다.
 
+SNBT 구현에서도 정확성·최적화 리뷰 역할 두 개를 유지했다. 별도 JVM 입력에서 발견한 오류 cursor·literal 후보 진단 차이를 수정하고
+전체 corpus로 재검증했다. 확장된 오류 객체의 재귀 stack 비용 문제는 작은 내부 실패 값과 parser 한 곳의 진단으로 해결했다.
+512단계 list·compound·builtin은 기본 test thread stack에서 검증했다. 진단 인수의 잘못된 span·출력 제한과 rollback도 확인했다.
+
+## 현재 library 빌드 비용
+
+Windows x86_64, Ryzen5 9600X, Rust1.96.0에서 별도 빈 Cargo target directory로 한 번 측정했다.
+Cargo process 전체 경과 시간은 debug library 최초0.901s, 변경 없음0.052s, `src/lib.rs`의 timestamp만 갱신한
+재컴파일0.324s, release library 최초0.887s였다. OS file cache는 비우지 않았다.
+debug/release `rlib`는 각각8,083,862/3,208,740bytes였다. 이는 배포 executable 크기나 build peak RAM 측정이 아니다.
+서버 코드·다중 플랫폼·실제 코드 변경의 빌드 비용을 대표하지 않으며 단일 측정 원본은 로컬 `Roadmap/reviews/snbt-build-cost.json`에 있다.
+
 ## 남은 범위와 의도한 API 경계
 
-NBT binary는 전체 BASE-NBT가 아니다. SNBT·NBT path·의미 연산/visitor/skip·압축·registry/typed schema·component·migration은 남아 있다.
+NBT binary와 SNBT는 전체 BASE-NBT가 아니다. NBT path·의미 연산/visitor/skip·압축·registry/typed schema·component·migration은 남아 있다.
 현재 named root API는 이름을 보존·검증하며, 원본 이름을 건너뛰는 Vanilla 디스크 편의 함수와 구분된다.
 호출자별 disk fallback/oversized UTF 정책은 해당 소비자 구현에서 따로 대조한다.
 
@@ -41,7 +61,7 @@ NBT binary는 전체 BASE-NBT가 아니다. SNBT·NBT path·의미 연산/visito
 writer 예산은 추가된 논리 출력 bytes이고 기존 Vec capacity를 줄이는 정책이 아니다. 이후 worker/connection memory 예산에 결합해야 한다.
 compound의 정렬 Vec·private ordinal은 초기 구현 선택이며 hot-path 소비자가 생긴 뒤 조회/변경/메모리 비용을 측정한다.
 
-commit `b8dfca1`의 [CI run 33948100994](https://github.com/Love0118/Arrow-MC/actions/runs/33948100994)에서
+이전 binary/wire batch인 commit `b8dfca1`의 [CI run 33948100994](https://github.com/Love0118/Arrow-MC/actions/runs/33948100994)에서
 Linux x86_64/ARM64·macOS ARM64·Windows x86_64 네 native host의 format/clippy/debug24/release24 테스트와 Python10 테스트가 통과했다.
 각 host triple 확인 단계도 성공했다. Java oracle는 CI에서 ignored이며 위의 Windows 로컬 명시적 실행 결과로만 입증한다.
 최초 workflow는 YAML 구문으로 job 시작 전 실패했고 `b8dfca1`에서 수정하여 성공했다.

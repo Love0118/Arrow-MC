@@ -60,6 +60,16 @@ pub struct CompoundEntry {
     sequence: usize,
 }
 
+impl CompoundEntry {
+    pub fn new(name: NbtString, value: Tag) -> Self {
+        Self {
+            name,
+            value,
+            sequence: 0,
+        }
+    }
+}
+
 impl PartialEq for CompoundEntry {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name && self.value == other.value
@@ -69,6 +79,27 @@ impl PartialEq for CompoundEntry {
 impl Compound {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Builds a compound in one allocation, preserving the final occurrence of
+    /// duplicate keys. This is shared by independently budgeted binary/text readers.
+    pub fn from_entries(mut entries: Vec<CompoundEntry>) -> Result<Self, Error> {
+        for (sequence, entry) in entries.iter_mut().enumerate() {
+            if matches!(entry.value, Tag::End) {
+                return Err(Error::UnexpectedEnd);
+            }
+            entry.sequence = sequence;
+        }
+        entries.sort_unstable_by(|a, b| a.name.cmp(&b.name).then(a.sequence.cmp(&b.sequence)));
+        entries.dedup_by(|later, earlier| {
+            if later.name == earlier.name {
+                std::mem::swap(&mut later.value, &mut earlier.value);
+                true
+            } else {
+                false
+            }
+        });
+        Ok(Self(entries))
     }
 
     pub fn entries(&self) -> &[CompoundEntry] {

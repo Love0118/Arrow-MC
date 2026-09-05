@@ -47,3 +47,5 @@ jobs:
       - uses: actions/checkout@v4
       - name: Python tooling tests
         run: python3 -m unittest discover -s tools/tests -v
+      - name: Verify pinned Unicode data generation
+        run: python3 tools/generate_unicode_names.py --check

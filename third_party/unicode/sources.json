@@ -1,0 +1,37 @@
+{
+  "unicode_version": "16.0.0",
+  "license": "Unicode-3.0",
+  "retrieved_utc": "2026-09-05",
+  "sources": [
+    {
+      "path": "16.0.0/UnicodeData.txt",
+      "url": "https://www.unicode.org/Public/16.0.0/ucd/UnicodeData.txt",
+      "sha256": "ff58e5823bd095166564a006e47d111130813dcf8bf234ef79fa51a870edb48f"
+    },
+    {
+      "path": "16.0.0/Blocks.txt",
+      "url": "https://www.unicode.org/Public/16.0.0/ucd/Blocks.txt",
+      "sha256": "f3907b395d410f1b97342292ca6bc83dd12eb4b205f2a0c48efdef99e517d7b0"
+    },
+    {
+      "path": "16.0.0/NameAliases.txt",
+      "url": "https://www.unicode.org/Public/16.0.0/ucd/NameAliases.txt",
+      "sha256": "9953f0fcebf5ea8091c5c581e4df0e43f20d2533c84ccca7987a9bb819a896a8"
+    },
+    {
+      "path": "16.0.0/SpecialCasing.txt",
+      "url": "https://www.unicode.org/Public/16.0.0/ucd/SpecialCasing.txt",
+      "sha256": "8d5de354eef79f2395a54c9c7dcebbaf3d30fc962d0f85611ea97aa973a0c451"
+    },
+    {
+      "path": "16.0.0/ReadMe.txt",
+      "url": "https://www.unicode.org/Public/16.0.0/ucd/ReadMe.txt",
+      "sha256": "14cafa23788d3a20dd21d6b0cdcb8d6dab520781fcd9ad9392f3b88ea607e633"
+    },
+    {
+      "path": "LICENSE.txt",
+      "url": "https://www.unicode.org/license.txt",
+      "sha256": "e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96"
+    }
+  ]
+}

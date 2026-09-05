@@ -1,0 +1,37 @@
+{
+  "unicode_version": "16.0.0",
+  "format_version": 1,
+  "named_code_points": 40077,
+  "algorithmic_ranges": 20,
+  "algorithmic_code_points": 254502,
+  "uppercase_ascii_mappings": 10,
+  "bmp_decimal_ranges": 37,
+  "maximum_explicit_name_bytes": 88,
+  "binary_bytes": 1352711,
+  "files": {
+    "names.bin": {
+      "bytes": 1031152,
+      "sha256": "89a2ac44527faa1a323746e6aa61293451633cef5d274ce69f4073c86c20c192"
+    },
+    "name_records.bin": {
+      "bytes": 320624,
+      "sha256": "24a46dd85f693cce068da885dc23068e417f76fa6691e0285fbbac36a7c0ae9e"
+    },
+    "range_prefixes.bin": {
+      "bytes": 521,
+      "sha256": "886ec6ca43b3cb537d3e2cf2f7ad234339cd3b0195ad751ba08a1dd35c2c0640"
+    },
+    "range_records.bin": {
+      "bytes": 280,
+      "sha256": "9c1a141395b69fada62b2ea99fb8fbd0ba0d926e8854ab03e2c2231d9aef6166"
+    },
+    "uppercase_ascii.bin": {
+      "bytes": 60,
+      "sha256": "e6e2403014108396ca34c5452e668def2d9cc224d523099595af46b1e559665f"
+    },
+    "decimal_starts.bin": {
+      "bytes": 74,
+      "sha256": "3292843ae8448be70b2768b686fd6eda0ce8e1f43c2d3fcb31e36245a17f96aa"
+    }
+  }
+}
