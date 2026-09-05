@@ -8,7 +8,10 @@ use super::{
     work::{CompletedLighting, LightingLimits},
 };
 use crate::{
-    runtime::{AdmissionError, CpuPool, LightingCompletion, LightingReserveError, PendingLighting},
+    runtime::{
+        AdmissionError, CpuPool, LightingAdoptionReason, LightingCompletion, LightingReserveError,
+        PendingLighting, ResidentLighting, ResidentLightingBudget,
+    },
     world::{
         loading::ChunkLoadingOwner, preparation::ChunkAddress, storage::chunk::DimensionHeight,
     },
@@ -19,6 +22,7 @@ use std::fmt;
 pub enum LightingOwnerError {
     Source(LightError),
     Admission(AdmissionError),
+    Adoption(LightingAdoptionReason),
     WrongSkyMode,
     StaleSource,
     Incomplete,
@@ -51,7 +55,7 @@ impl fmt::Debug for RejectedLighting {
 /// Revision and selection are fenced within each domain, not globally arbitrated.
 #[derive(Default)]
 pub struct LightingDomain {
-    completion: Option<LightingCompletion>,
+    completion: Option<ResidentLighting>,
     current: Option<SourceStamp>,
 }
 impl LightingDomain {
@@ -91,6 +95,9 @@ impl LightingDomain {
         self.current = None;
     }
 
+    /// Validate current source ownership, then reserve the completed payload in
+    /// the shared resident budget before returning its CPU slot. Admission
+    /// failure leaves this request current and returns the same result for retry.
     #[expect(
         clippy::result_large_err,
         reason = "rejection preserves the existing completion and lease without allocation"
@@ -99,12 +106,20 @@ impl LightingDomain {
         &mut self,
         owner: &ChunkLoadingOwner,
         completion: LightingCompletion,
+        resident_budget: &ResidentLightingBudget,
     ) -> Result<(), RejectedLighting> {
         let result = self.validate(owner, &completion);
         if let Err(reason) = result {
             return Err(RejectedLighting { reason, completion });
         }
-        self.completion = Some(completion);
+        let resident = completion.try_adopt(resident_budget).map_err(|error| {
+            let reason = LightingOwnerError::Adoption(error.reason());
+            RejectedLighting {
+                reason,
+                completion: error.into_completion(),
+            }
+        })?;
+        self.completion = Some(resident);
         Ok(())
     }
 
@@ -136,7 +151,7 @@ impl LightingDomain {
     /// canonical source while encoding from this capability. Source publication,
     /// removal and registry/dimension reload invalidate later reads globally.
     pub fn ready<'a>(&'a self, owner: &'a ChunkLoadingOwner) -> Option<ReadyLighting<'a>> {
-        let completed = self.completion.as_ref()?.completed()?;
+        let completed = self.completion.as_ref()?.completed();
         if self.current.as_ref()? != &completed.source().stamp()
             || !completed.source().is_current(owner)
             || completed.sky().is_some() != owner.has_sky_light()
@@ -151,7 +166,7 @@ impl LightingDomain {
 }
 
 /// Snapshot handles remain private to the crate so their public Clone cannot
-/// escape the runtime completion's CPU reservation. Packet builders receive
+/// escape the adopted result's resident reservation. Packet builders receive
 /// borrowed payloads only, tied to this capability's lifetime.
 pub struct ReadyLighting<'a> {
     completed: &'a CompletedLighting,

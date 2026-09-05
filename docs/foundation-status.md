@@ -61,7 +61,26 @@ OS 보고 peak working set47,333,376bytes, private memory 표본 최대42,803,20
 registry/source 준비와 전체 실행·검증을 포함한 값이며 worker별 분리 측정·resident 예산 상한을 뜻하지 않는다.
 
 저장 light 재사용·PRE/POST callbacks·ticket/status·실제 world mutation과 Play는 남아 있다.
-현재 완료본은 보관하는 동안 CPU slot을 유지한다. 긴 resident 조명 수명의 별도 예산 전환과 겹치는 domain 조정도 후속 작업이다.
+`5e14ec7`까지의 완료본은 보관하는 동안 CPU slot을 유지했다. 후속 resident 이전은 아래에 별도로 기록한다.
+겹치는 domain의 전역 조정과 실제 ticket/readiness 연결은 남아 있다.
+
+## 완료 조명의 resident 예산 이전
+
+완료 조명이 CPU 슬롯을 모두 차지하면 worker가 비어 있어도 packet 작업을 제출하지 못하는 문제를 해결했다.
+`LightingDomain::accept(owner, completion, &resident_budget)`는 기존 source/domain 검사를 먼저 수행하고,
+`ResidentLightingBudget`에 목적지 비용을 확보한 뒤 완료 payload를 이동해 CPU 슬롯과 예약을 반환한다.
+목적지가 한 byte 부족해도 원래 completion·CPU 예약·현재 요청을 보존하므로 같은 결과를 재시도할 수 있다.
+
+snapshot의 실제 metadata capacity·body·제어 객체와 layer별 보수적 payload allowance, source backing을 계산한다.
+uniform layer의 잠재2KiB를 보존하며 이미 해제된 작업 큐의 최대량은 resident 비용에 넣지 않는다.
+shared registry·canonical 청크 palette는 복사하지 않고 원래 lease를 유지한다. 계산과 이전 과정에 새 payload allocation은 없다.
+공유 `ResidentLightingBudget`을 사용해야 여러 domain의 합산량이 제한된다.
+
+CPU 슬롯 하나의 실제 canonical→조명→resident 이전→packet→TCP 시험과 예산 부족/재시도·unload 후 수명·COW·overflow를 검증했다.
+예제 한 건은 CPU 예약8,392,584bytes에서 resident 청구120,156bytes로 바뀌었다. 이 값은 해당 fixture의 admission 비용이며 RSS가 아니다.
+새 테스트 포함 로컬 debug/release 전체 각각630개·37선택제외와 strict Clippy·format을 통과했다.
+이 변경의 native CI는 source commit별로 별도 확인한다.
+이전 `5e14ec7`의612개 성공을 이 변경의 native 검증으로 대체하지 않는다.
 
 ## Heightmap·시야·chunk packet 추가
 

@@ -67,7 +67,7 @@ pub struct PacketLightSnapshot<'a> {
 
 impl<'a> PacketLightSnapshot<'a> {
     /// Uses the lighting owner's current complete result and keeps its canonical
-    /// source borrow and shared CPU reservation live through packet encoding.
+    /// source borrow and resident-light reservation live through packet encoding.
     /// Rejects positions outside that result's explicitly selected domain before
     /// allocating descriptors. This is lighting readiness, not Play/send-sync.
     pub fn from_ready(

@@ -4,7 +4,9 @@ mod registry_fixture;
 
 use arrow_mc::{
     nbt::{self, Compound, NamedTag, Tag},
-    runtime::{CpuPool, CpuPoolConfig, LightingCompletion, PendingLighting},
+    runtime::{
+        CpuPool, CpuPoolConfig, LightingCompletion, PendingLighting, ResidentLightingBudget,
+    },
     server::{
         chunk_packet,
         light_snapshot::{ChangedFilters, Error as SnapshotError, PacketLightSnapshot},
@@ -60,12 +62,16 @@ struct Fixture {
     _bundle: registry_fixture::Fixture,
     registry: Arc<ChunkRegistrySnapshot>,
     cpu: Arc<CpuPool>,
+    resident: ResidentLightingBudget,
     owner: ChunkLoadingOwner,
     store: ChunkStore,
 }
 
 impl Fixture {
     fn new(sky: bool, states: &[&str]) -> Self {
+        Self::with_slots(sky, states, 8)
+    }
+    fn with_slots(sky: bool, states: &[&str], max_jobs: usize) -> Self {
         let mut bundle = registry_fixture::Fixture::from_data(
             json!({
                 "state_count":4,"state_flags":[1,0,0,0],"blocks":[
@@ -120,7 +126,7 @@ impl Fixture {
         let cpu = Arc::new(
             CpuPool::new(CpuPoolConfig {
                 workers: 2,
-                max_jobs: 8,
+                max_jobs,
                 buffer_bytes: 256 * 1024 * 1024,
             })
             .unwrap(),
@@ -139,6 +145,7 @@ impl Fixture {
             _bundle: bundle,
             registry,
             cpu,
+            resident: ResidentLightingBudget::new(256 * 1024 * 1024),
             owner,
             store,
         }
@@ -240,7 +247,7 @@ async fn finish(mut pending: PendingLighting) -> LightingCompletion {
 }
 
 #[test]
-fn canonical_resident_computed_light_acceptance_packet_and_tcp_keep_one_owner_lease() {
+fn adopted_light_releases_the_only_cpu_slot_before_real_packet_delivery() {
     use arrow_mc::server::{
         chunk_sender::{
             ChunkDeliveryQueue, ChunkSender, DeliveryLimits, SendReadyChunk, SenderLimits,
@@ -252,19 +259,27 @@ fn canonical_resident_computed_light_acceptance_packet_and_tcp_keep_one_owner_le
         net::{TcpListener, TcpStream},
     };
     run(async {
-        let mut fixture = Fixture::new(false, &["test:bright", "minecraft:air"]);
+        let mut fixture = Fixture::with_slots(false, &["test:bright", "minecraft:air"], 1);
         fixture.load(0).await;
         fixture.load(1).await;
         let mut domain = LightingDomain::new();
         let completion = finish(fixture.begin(&mut domain, &[address(0), address(1)], false)).await;
-        let reserved = completion.reserved_bytes();
+        let cpu_reserved = completion.reserved_bytes();
+        let resident_bytes = completion.resident_bytes().unwrap();
+        assert_eq!(fixture.cpu.stats().in_flight, 1);
+        assert_eq!(fixture.cpu.stats().reserved_buffer_bytes, cpu_reserved);
         assert_eq!(completion.light_level(LightKind::Block, block(8)), Some(15));
         assert_eq!(
             completion.light_level(LightKind::Block, block(16)),
             Some(14)
         );
-        domain.accept(&fixture.owner, completion).unwrap();
-        assert_eq!(fixture.cpu.stats().reserved_buffer_bytes, reserved);
+        domain
+            .accept(&fixture.owner, completion, &fixture.resident)
+            .unwrap();
+        assert_eq!(fixture.cpu.stats().in_flight, 0);
+        assert_eq!(fixture.cpu.stats().reserved_buffer_bytes, 0);
+        assert_eq!(fixture.resident.stats().results, 1);
+        assert_eq!(fixture.resident.stats().used_bytes, resident_bytes);
         {
             let ready = domain.ready(&fixture.owner).unwrap();
             assert_eq!(ready.height(), height());
@@ -362,10 +377,14 @@ fn canonical_resident_computed_light_acceptance_packet_and_tcp_keep_one_owner_le
                 .unwrap();
                 assert_eq!(actual, expected);
             }
-            assert_eq!(fixture.cpu.stats().reserved_buffer_bytes, reserved);
+            assert_eq!(fixture.cpu.stats().in_flight, 0);
+            assert_eq!(fixture.cpu.stats().reserved_buffer_bytes, 0);
+            assert_eq!(fixture.resident.stats().used_bytes, resident_bytes);
         }
         domain.cancel();
         assert_eq!(fixture.cpu.stats().reserved_buffer_bytes, 0);
+        assert_eq!(fixture.resident.stats().results, 0);
+        assert_eq!(fixture.resident.stats().used_bytes, 0);
         assert!(domain.ready(&fixture.owner).is_none());
     });
 }
@@ -380,10 +399,13 @@ fn block_and_sky_must_both_complete_before_a_coherent_capability_is_available() 
         let paused = pending.submit(0).unwrap().wait().await.unwrap();
         assert!(!paused.progress().unwrap().complete);
         let reserved = paused.reserved_bytes();
-        let rejected = domain.accept(&fixture.owner, paused).unwrap_err();
+        let rejected = domain
+            .accept(&fixture.owner, paused, &fixture.resident)
+            .unwrap_err();
         assert_eq!(rejected.reason, LightingOwnerError::Incomplete);
         assert!(domain.ready(&fixture.owner).is_none());
         assert_eq!(fixture.cpu.stats().reserved_buffer_bytes, reserved);
+        assert_eq!(fixture.resident.stats().used_bytes, 0);
         let completion = finish(
             rejected
                 .completion
@@ -391,7 +413,9 @@ fn block_and_sky_must_both_complete_before_a_coherent_capability_is_available() 
                 .unwrap_or_else(|_| panic!("paused completion")),
         )
         .await;
-        domain.accept(&fixture.owner, completion).unwrap();
+        domain
+            .accept(&fixture.owner, completion, &fixture.resident)
+            .unwrap();
         let ready = domain.ready(&fixture.owner).unwrap();
         assert_eq!(ready.light_level(LightKind::Block, block(8)), Some(4));
         assert_eq!(ready.light_level(LightKind::Sky, block(8)), Some(15));
@@ -415,8 +439,11 @@ fn new_domain_attempt_rejects_old_completion_and_preserves_its_admission() {
         let old_bytes = old.reserved_bytes();
         let new = fixture.begin(&mut domain, &[address(1)], false);
         let new_bytes = new.reserved_bytes();
-        let rejection = domain.accept(&fixture.owner, old).unwrap_err();
+        let rejection = domain
+            .accept(&fixture.owner, old, &fixture.resident)
+            .unwrap_err();
         assert_eq!(rejection.reason, LightingOwnerError::StaleSource);
+        assert_eq!(fixture.resident.stats().used_bytes, 0);
         assert_eq!(
             fixture.cpu.stats().reserved_buffer_bytes,
             old_bytes + new_bytes
@@ -424,7 +451,9 @@ fn new_domain_attempt_rejects_old_completion_and_preserves_its_admission() {
         assert!(domain.ready(&fixture.owner).is_none());
         drop(rejection);
         assert_eq!(fixture.cpu.stats().reserved_buffer_bytes, new_bytes);
-        domain.accept(&fixture.owner, finish(new).await).unwrap();
+        domain
+            .accept(&fixture.owner, finish(new).await, &fixture.resident)
+            .unwrap();
         let ready = domain.ready(&fixture.owner).unwrap();
         assert!(!ready.has_chunk(address(0)));
         assert_eq!(ready.light_level(LightKind::Block, block(16)), Some(0));
@@ -439,17 +468,23 @@ fn canonical_add_remove_and_reload_invalidate_later_ready_reads() {
         let mut domain = LightingDomain::new();
         // A new canonical resident invalidates even a previously absent neighbor.
         let completion = finish(fixture.begin(&mut domain, &[address(0)], false)).await;
-        domain.accept(&fixture.owner, completion).unwrap();
+        domain
+            .accept(&fixture.owner, completion, &fixture.resident)
+            .unwrap();
         assert!(domain.ready(&fixture.owner).is_some());
         fixture.load(1).await;
         assert!(domain.ready(&fixture.owner).is_none());
         let completion = finish(fixture.begin(&mut domain, &[address(0), address(1)], false)).await;
-        domain.accept(&fixture.owner, completion).unwrap();
+        domain
+            .accept(&fixture.owner, completion, &fixture.resident)
+            .unwrap();
         assert!(domain.ready(&fixture.owner).is_some());
         assert!(fixture.owner.remove_demand(address(1)));
         assert!(domain.ready(&fixture.owner).is_none());
         let completion = finish(fixture.begin(&mut domain, &[address(0)], false)).await;
-        domain.accept(&fixture.owner, completion).unwrap();
+        domain
+            .accept(&fixture.owner, completion, &fixture.resident)
+            .unwrap();
         fixture
             .owner
             .reload(Arc::clone(&fixture.registry), height(), false)
@@ -457,6 +492,7 @@ fn canonical_add_remove_and_reload_invalidate_later_ready_reads() {
         assert!(domain.ready(&fixture.owner).is_none());
         domain.cancel();
         assert_eq!(fixture.cpu.stats().reserved_buffer_bytes, 0);
+        assert_eq!(fixture.resident.stats().used_bytes, 0);
     });
 }
 
@@ -468,15 +504,23 @@ fn changed_canonical_source_and_wrong_owner_reject_completed_payloads() {
         let mut domain = LightingDomain::new();
         let complete = finish(fixture.begin(&mut domain, &[address(0)], false)).await;
         let other = Fixture::owner(&fixture.registry, false);
-        let rejected = domain.accept(&other, complete).unwrap_err();
+        let rejected = domain
+            .accept(&other, complete, &fixture.resident)
+            .unwrap_err();
         assert_eq!(rejected.reason, LightingOwnerError::StaleSource);
-        domain.accept(&fixture.owner, rejected.completion).unwrap();
+        assert_eq!(fixture.resident.stats().used_bytes, 0);
+        domain
+            .accept(&fixture.owner, rejected.completion, &fixture.resident)
+            .unwrap();
         assert!(domain.ready(&other).is_none());
         let complete = finish(fixture.begin(&mut domain, &[address(0)], false)).await;
         fixture.owner.remove_demand(address(0));
         fixture.load(0).await;
-        let rejected = domain.accept(&fixture.owner, complete).unwrap_err();
+        let rejected = domain
+            .accept(&fixture.owner, complete, &fixture.resident)
+            .unwrap_err();
         assert_eq!(rejected.reason, LightingOwnerError::StaleSource);
+        assert_eq!(fixture.resident.stats().used_bytes, 0);
         assert!(domain.ready(&fixture.owner).is_none());
     });
 }
@@ -488,7 +532,9 @@ fn failed_relight_requests_revoke_previous_ready_and_cancel_rejects_late_results
         fixture.load(0).await;
         let mut domain = LightingDomain::new();
         let completion = finish(fixture.begin(&mut domain, &[address(0)], false)).await;
-        domain.accept(&fixture.owner, completion).unwrap();
+        domain
+            .accept(&fixture.owner, completion, &fixture.resident)
+            .unwrap();
         assert!(domain.ready(&fixture.owner).is_some());
         assert!(matches!(
             domain.begin(
@@ -524,9 +570,12 @@ fn failed_relight_requests_revoke_previous_ready_and_cancel_rejects_late_results
         ));
         let completion = finish(fixture.begin(&mut domain, &[address(0)], false)).await;
         domain.cancel();
-        let rejected = domain.accept(&fixture.owner, completion).unwrap_err();
+        let rejected = domain
+            .accept(&fixture.owner, completion, &fixture.resident)
+            .unwrap_err();
         assert_eq!(rejected.reason, LightingOwnerError::MissingRequest);
         assert!(fixture.cpu.stats().reserved_buffer_bytes > 0);
+        assert_eq!(fixture.resident.stats().used_bytes, 0);
         drop(rejected);
         assert_eq!(fixture.cpu.stats().reserved_buffer_bytes, 0);
     });
@@ -539,9 +588,12 @@ fn cpu_admission_failure_revokes_previous_publication_without_leaking_its_lease(
         fixture.load(0).await;
         let mut domain = LightingDomain::new();
         let completion = finish(fixture.begin(&mut domain, &[address(0)], false)).await;
-        domain.accept(&fixture.owner, completion).unwrap();
+        domain
+            .accept(&fixture.owner, completion, &fixture.resident)
+            .unwrap();
         assert!(domain.ready(&fixture.owner).is_some());
-        assert!(fixture.cpu.stats().reserved_buffer_bytes > 0);
+        assert_eq!(fixture.cpu.stats().reserved_buffer_bytes, 0);
+        assert!(fixture.resident.stats().used_bytes > 0);
         let small = CpuPool::new(CpuPoolConfig {
             workers: 1,
             max_jobs: 1,
@@ -562,6 +614,7 @@ fn cpu_admission_failure_revokes_previous_publication_without_leaking_its_lease(
         ));
         assert!(domain.ready(&fixture.owner).is_none());
         assert_eq!(fixture.cpu.stats().reserved_buffer_bytes, 0);
+        assert_eq!(fixture.resident.stats().used_bytes, 0);
         assert_eq!(small.stats().reserved_buffer_bytes, 0);
         // Even an unavailable source is not captured until its source metadata
         // and kernel reservation are admitted. The budget error takes priority.
@@ -579,7 +632,9 @@ fn cpu_admission_failure_revokes_previous_publication_without_leaking_its_lease(
         ));
         assert_eq!(small.stats().reserved_buffer_bytes, 0);
         let completion = finish(fixture.begin(&mut domain, &[address(0)], false)).await;
-        domain.accept(&fixture.owner, completion).unwrap();
+        domain
+            .accept(&fixture.owner, completion, &fixture.resident)
+            .unwrap();
         assert_eq!(
             domain
                 .ready(&fixture.owner)
@@ -587,5 +642,169 @@ fn cpu_admission_failure_revokes_previous_publication_without_leaking_its_lease(
                 .light_level(LightKind::Block, block(8)),
             Some(4)
         );
+    });
+}
+
+#[test]
+fn resident_admission_failure_returns_the_same_cpu_charged_completion_for_retry() {
+    run(async {
+        let mut fixture = Fixture::with_slots(false, &["test:bright"], 1);
+        fixture.load(0).await;
+        let mut domain = LightingDomain::new();
+        let completion = finish(fixture.begin(&mut domain, &[address(0)], false)).await;
+        let cpu_bytes = completion.reserved_bytes();
+        let resident_bytes = completion.resident_bytes().unwrap();
+        assert!(resident_bytes > 0);
+        let small = ResidentLightingBudget::new(resident_bytes - 1);
+        let rejection = domain
+            .accept(&fixture.owner, completion, &small)
+            .unwrap_err();
+        assert_eq!(
+            rejection.reason,
+            LightingOwnerError::Adoption(arrow_mc::runtime::LightingAdoptionReason::ByteLimit)
+        );
+        assert_eq!(rejection.completion.reserved_bytes(), cpu_bytes);
+        assert_eq!(
+            rejection.completion.resident_bytes().unwrap(),
+            resident_bytes
+        );
+        assert_eq!(
+            rejection.completion.light_level(LightKind::Block, block(8)),
+            Some(15)
+        );
+        assert_eq!(fixture.cpu.stats().in_flight, 1);
+        assert_eq!(fixture.cpu.stats().reserved_buffer_bytes, cpu_bytes);
+        assert_eq!(small.stats().results, 0);
+        assert_eq!(small.stats().used_bytes, 0);
+        assert_eq!(small.stats().peak_bytes, 0);
+        assert!(domain.ready(&fixture.owner).is_none());
+        let exact = ResidentLightingBudget::new(resident_bytes);
+        domain
+            .accept(&fixture.owner, rejection.completion, &exact)
+            .unwrap();
+        assert_eq!(fixture.cpu.stats().in_flight, 0);
+        assert_eq!(fixture.cpu.stats().reserved_buffer_bytes, 0);
+        assert_eq!(exact.stats().results, 1);
+        assert_eq!(exact.stats().used_bytes, resident_bytes);
+        assert_eq!(exact.stats().peak_bytes, resident_bytes);
+        assert_eq!(
+            domain
+                .ready(&fixture.owner)
+                .unwrap()
+                .light_level(LightKind::Block, block(8)),
+            Some(15)
+        );
+        domain.cancel();
+        assert_eq!(exact.stats().results, 0);
+        assert_eq!(exact.stats().used_bytes, 0);
+    });
+}
+
+#[test]
+fn resident_capacity_is_shared_and_old_domain_retains_data_until_its_reader_scope_ends() {
+    run(async {
+        let mut fixture = Fixture::with_slots(false, &["test:bright", "test:dim"], 1);
+        fixture.load(0).await;
+        fixture.load(1).await;
+        let mut first = LightingDomain::new();
+        let first_output = finish(fixture.begin(&mut first, &[address(0)], false)).await;
+        let first_bytes = first_output.resident_bytes().unwrap();
+        let budget = ResidentLightingBudget::new(first_bytes);
+        first.accept(&fixture.owner, first_output, &budget).unwrap();
+        let mut second = LightingDomain::new();
+        let second_output = finish(fixture.begin(&mut second, &[address(1)], false)).await;
+        let second_bytes = second_output.resident_bytes().unwrap();
+        assert!(second_bytes <= first_bytes);
+        let rejection = second
+            .accept(&fixture.owner, second_output, &budget.clone())
+            .unwrap_err();
+        assert_eq!(
+            rejection.reason,
+            LightingOwnerError::Adoption(arrow_mc::runtime::LightingAdoptionReason::ByteLimit)
+        );
+        assert_eq!(budget.stats().results, 1);
+        assert_eq!(budget.stats().used_bytes, first_bytes);
+        assert_eq!(fixture.cpu.stats().in_flight, 1);
+        {
+            let ready = first.ready(&fixture.owner).unwrap();
+            let bridge = PacketLightSnapshot::from_ready(
+                &ready,
+                address(0),
+                ChangedFilters::default(),
+                4096,
+            )
+            .unwrap();
+            let encoded = chunk_packet::encode(
+                &bridge.chunk_packet(&[], &[], &[]),
+                fixture.registry.block_entity_type_count(),
+                chunk_packet::Limits::default(),
+            )
+            .unwrap();
+            assert!(!encoded.is_empty());
+            assert_eq!(ready.light_level(LightKind::Block, block(8)), Some(15));
+            assert_eq!(budget.stats().used_bytes, first_bytes);
+        }
+        // ReadyLighting is intentionally borrow-only. The old domain cannot
+        // be cancelled while its packet reader is live; after that scope the
+        // destination capacity becomes available for this same CPU completion.
+        first.cancel();
+        assert_eq!(budget.stats().used_bytes, 0);
+        second
+            .accept(&fixture.owner, rejection.completion, &budget)
+            .unwrap();
+        assert_eq!(fixture.cpu.stats().in_flight, 0);
+        assert_eq!(budget.stats().results, 1);
+        assert_eq!(budget.stats().used_bytes, second_bytes);
+        assert_eq!(
+            second
+                .ready(&fixture.owner)
+                .unwrap()
+                .light_level(LightKind::Block, block(16)),
+            Some(4)
+        );
+        drop(second);
+        assert_eq!(budget.stats().used_bytes, 0);
+    });
+}
+
+#[test]
+fn stale_adopted_domain_keeps_canonical_resident_payload_until_cancel_after_unload() {
+    run(async {
+        let mut fixture = Fixture::with_slots(false, &["test:bright"], 1);
+        fixture.load(0).await;
+        let mut domain = LightingDomain::new();
+        let completion = finish(fixture.begin(&mut domain, &[address(0)], false)).await;
+        domain
+            .accept(&fixture.owner, completion, &fixture.resident)
+            .unwrap();
+        let canonical_bytes = fixture.owner.stats().resident_bytes;
+        let lighting_bytes = fixture.resident.stats().used_bytes;
+        assert!(canonical_bytes > 0 && lighting_bytes > 0);
+        {
+            let ready = domain.ready(&fixture.owner).unwrap();
+            let bridge = PacketLightSnapshot::from_ready(
+                &ready,
+                address(0),
+                ChangedFilters::default(),
+                4096,
+            )
+            .unwrap();
+            assert!(!bridge.light_data().block_updates.is_empty());
+            assert_eq!(fixture.owner.stats().resident_bytes, canonical_bytes);
+            assert_eq!(fixture.resident.stats().used_bytes, lighting_bytes);
+            assert_eq!(fixture.cpu.stats().in_flight, 0);
+        }
+        assert!(fixture.owner.remove_demand(address(0)));
+        assert!(fixture.owner.resident(address(0)).is_none());
+        assert!(domain.ready(&fixture.owner).is_none());
+        // The invalidated result is no longer readable, but still owns its
+        // immutable source until the lighting owner explicitly retires it.
+        assert_eq!(fixture.owner.stats().resident_bytes, canonical_bytes);
+        assert_eq!(fixture.resident.stats().used_bytes, lighting_bytes);
+        assert_eq!(fixture.cpu.stats().in_flight, 0);
+        domain.cancel();
+        assert_eq!(fixture.owner.stats().resident_bytes, 0);
+        assert_eq!(fixture.resident.stats().used_bytes, 0);
+        assert_eq!(fixture.resident.stats().results, 0);
     });
 }

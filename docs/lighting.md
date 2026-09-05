@@ -4,8 +4,9 @@
 선택한 불변 청크 영역을 처음부터 계산해 공용 CPU pool에서 게시하는 경로다. **저장된 조명을 복원하는 전체 로딩 절차,
 `ThreadedLevelLightEngine`의 PRE/POST callback과 ticket·chunk status·Play 연결은 아직 완료하지 않았다.**
 
-커널·공용 CPU·owner·packet bridge의 정확성과 자원·추상화를 두 독립 리뷰어가 검수했다.
-이 범위의 성공과 전체 서버·네 플랫폼 검증은 구분한다. 배치별 결과는 [구현 상태](foundation-status.md)에 기록한다.
+커널·공용 CPU·owner·packet bridge의 이전 배치는 `5e14ec7`에서 두 독립 리뷰와 네 native 플랫폼 검증을 마쳤다.
+아래 resident 예산 이전은 후속 배치이며 현재 로컬 대상 검증과 전체/native 검증을 구분한다.
+배치별 결과는 [구현 상태](foundation-status.md)에 기록한다.
 
 ## 책임과 호출 경로
 
@@ -17,8 +18,8 @@
 | `world/lighting/queue.rs`, `block.rs` | check/decrease/increase 큐와 block light 전파 | 실제 world mutation event의 자동 입력 |
 | `world/lighting/sources.rs`, `sky.rs` | 열별 sky source와 sky 전파·enable/disable·재개 | terrain heightmap으로 sky source를 대체하는 동작 |
 | `world/lighting/work.rs` | 불변 available 영역의 초기 block/sky 재계산, 작업 단위별 중단 | 저장 light 복원·Threaded wrapper의 task history 재현 |
-| `runtime/lighting.rs` | 기존 CPU 예산 안에서 계산·중단·재제출·완료 수명 유지 | 별도 per-world executor, 완료 즉시 CPU 예약 해제 |
-| `world/lighting/owner.rs` | 현재 선택 영역과 canonical topology에 맞는 완료본만 수락 | ticking/send-sync/spawn/Play readiness |
+| `runtime/lighting.rs` | 공용 CPU 계산·중단·재제출, 완료본의 resident 선예약 후 CPU 환급 | 별도 per-world executor, 소비자 예산 없는 완료 cache |
+| `world/lighting/owner.rs` | 현재 선택 영역과 canonical topology 검사 후 resident 완료본 보유 | ticking/send-sync/spawn/Play readiness |
 | `server/light_snapshot.rs` | 게시된 조명을 chunk packet의 mask/update 필드로 빌림 | raw disk light를 검증 없이 전송 가능 상태로 승격 |
 
 위 경로는 모두 `src/` 아래다. 일반 실행 흐름은 다음과 같다.
@@ -27,7 +28,7 @@
 2. `LightingDomain::begin`이 `try_reserve_canonical_lighting`으로 kernel 최대 비용과 source metadata를 먼저 예약한 뒤 청크 목록을 포착한다.
 3. `PendingLighting::submit(max_units)`로 제출하고 `LightingTask::wait` 또는 `wait_mut`로 결과를 받는다.
 4. 아직 끝나지 않은 결과는 `progress`를 확인하고 `into_pending`으로 같은 예약 아래 재제출한다. 필요하면 `request_growth`로 원래 총예산 안의 큐·scratch 증설을 요청한다. 오류를 완료로 처리하지 않는다.
-5. 두 layer가 모두 끝나면 `LightingDomain::accept`가 domain identity·현재 source·sky 모드를 검사한다.
+5. 두 layer가 모두 끝나면 `LightingDomain::accept(owner, completion, &resident_budget)`가 domain identity·현재 source·sky 모드를 먼저 검사하고 완료본의 resident 비용을 승인한다. 성공한 뒤 CPU slot과 예약 bytes를 반환한다.
 6. `ready(owner)`의 `ReadyLighting`을 `PacketLightSnapshot::from_ready`에 넘겨 packet을 만든다. 실제 send-sync와 Play 상태는 별도 소비자가 확인해야 한다.
 
 ## v3 데이터와 조명 입력
@@ -94,6 +95,7 @@ raw dampening, 빈 section 아래의 수평 연결을 처리한다. terrain heig
 | `BlockLightLimits`, `SkyLimits` | checks/FIFO/index와 sky source·계획 scratch | source·layer storage |
 | lighting `StorageLimits` | section/column/알림/COW/visible metadata와 layer 예약 | source·엔진 큐·CPU thread stack |
 | `LightingLimits::reservation_bytes` | `LightingWork` 본체와 설정된 모든 coordinator/engine/storage allowance의 보수적 합 | source 자체는 별도 합산. shared registry·resident와 allocator/OS/native 비용은 분리 |
+| `ResidentLightingBudget` | 완료 후 남는 source metadata·owned section·visible snapshot backing과 보수적 제어 비용 | 이미 해제한 kernel 큐·scratch·설정 최대치, 기존 canonical resident·shared registry |
 | `PacketLightSnapshot`의 `control_bytes` | block/sky update descriptor 두 Vec | borrowed layer payload, 완전 packet output, delivery·framing 복사본 |
 
 독립 호출자는 `LightingWork::new` 전에 `reservation_bytes()`에 해당하는 외부 admission을 직접 확보해야 한다.
@@ -106,19 +108,43 @@ source index를 포착하기 전에 확보한다. 기존 resident의 palette는 
 이 경우에도 생산자가 입력을 만들기 전 확보해야 했던 admission 책임은 없어지지 않는다. 두 경로 모두 새 engine/queue/storage는
 예약 후 worker에서 만든다.
 
-pending·running·paused·ordinary error·complete 결과가 같은 CPU lease를 유지한다. completion의 공개 API는 light 값 같은 진단만 제공하고
-runtime snapshot getter는 crate-private이므로 CPU 예약 밖으로 snapshot clone을 빼낼 수 없다.
+pending·running·paused·ordinary error와 아직 이전하지 않은 complete 결과는 같은 CPU lease를 유지한다.
+완료본은 `LightingCompletion::try_adopt(&ResidentLightingBudget)`에 성공한 뒤 `ResidentLighting`의 별도 예약 아래 보유한다.
+runtime snapshot getter는 crate-private이며 완료본·resident·`ReadyLighting`에서 외부로 snapshot/source를 복제해 예약 수명과 분리할 수 없다.
 
 runtime의 한 번 제출은 `MAX_LIGHTING_SLICE_UNITS = 64`로 제한한다. 큰 요청도 64단위까지만 실행하고 아직 남은 결과는 다시 제출한다.
 각 단위의 비용이 다르므로 이 제한은 지연 시간 보장이 아니다. `request_growth`는 고정 크기의 요청만 저장하며 실제 큐·계획의 allocation은
 다음 worker 제출에서 이전 backing과 새 backing을 함께 승인해 수행한다.
 
 `LightingTask`를 취소하거나 소비자를 버려도 진행 중인 slice가 소유한 버퍼를 먼저 환급하지 않는다. worker가 slice를 끝내고
-결과가 버려질 때 payload를 해제한 뒤 lease를 반환한다. 완료가 늦거나 계속 보관되면 CPU slot도 계속 차지한다.
-무기한 완료 cache나 별도 per-world pool을 자동으로 만들지 않는다. 더 긴 resident 조명 수명으로 이전하려면 별도 소비자의 예산 설계가 필요하다.
+결과가 버려질 때 payload를 해제한 뒤 lease를 반환한다. 이전 전 완료본이나 이전에 실패한 완료본을 보관하면 CPU slot도 계속 차지한다.
+성공적으로 이전한 완료본은 CPU slot을 차지하지 않는다. 여러 domain은 같은 `ResidentLightingBudget` 또는 그 clone을 공유해야
+합계 상주량을 제한할 수 있다. 각 domain에 독립 예산을 만들면 aggregate 한도가 되지 않는다.
 
 uniform layer도 materialize될 수 있는 2,048 bytes와 제어 비용을 예약하지만 실제 backing은 아직 없을 수 있다.
 `heap_bytes`·`retained_bytes`·reserved layer bytes는 각 API가 설명한 범위의 수치다. 이를 더한 값도 process RSS나 allocator peak의 측정값은 아니다.
+
+## 완료본의 resident 이전
+
+`LightingCompletion::resident_bytes()`는 완료 후 실제로 도달 가능한 source와 visible snapshot의 backing을 기준으로
+보수적인 승인량을 계산한다. source metadata와 owned palette, snapshot 본체·index/top Vec의 실제 capacity,
+layer payload·Arc·budget 제어 비용을 포함한다. uniform layer도 잠재적인 2,048-byte payload를 예약하며,
+공유된 제어 객체는 결과나 layer마다 다시 계산할 수 있다. 계산은 allocation이나 layer materialization 없이 수행한다.
+
+이미 해제한 engine 큐·sky source cache·scratch·working storage 배열과 설정상의 kernel 최대치는 resident 비용에서 제외한다.
+canonical palette는 기존 `ResidentChunk`의 `Arc`와 원래 resident lease를 그대로 유지하며 복사하거나 중복 이전하지 않는다.
+shared registry도 기존 수명 관리에 남는다. `CompletedLighting::retained_bytes()`와 runtime의 `resident_bytes()`는
+이 경계를 구분하며 후자는 resident wrapper와 공유 ledger 제어 비용까지 포함한다.
+
+이전 순서는 **현재 owner 검증 → 목적지 bytes/results 승인 → 기존 payload 소유권 이동 → CPU 예약 반환**이다.
+목적지 mutex를 놓은 뒤 CPU ledger를 환급하므로 두 mutex를 동시에 잡지 않는다. source·palette·layer payload 복사는 없다.
+미완료·용량 부족·산술 overflow는 원래 완료본과 CPU lease를 반환한다. `LightingDomain::accept` 실패에서도 현재 요청을
+유지하므로 공간이 실제로 생긴 뒤 같은 완료본으로 재시도할 수 있다. 무제한 자동 재시도나 우선순위 scheduler는 추가하지 않았다.
+
+로컬 한 fixture에서는 CPU 예약 **8,392,584 bytes**가 완료본의 resident 승인량 **120,156 bytes**로 이전됐다.
+이는 해당 입력의 보수적 예약량 비교이며 RSS 감소율·처리량·일반적인 압축률 측정이 아니다.
+성공 뒤 `max_jobs = 1`인 같은 CPU pool에서 packet 작업을 실행할 수 있다. 다만 다른 running/paused 작업이나
+아직 이전하지 못한 완료본은 여전히 CPU 예산을 사용하므로 coordinator는 네트워크용 slot과 bytes 여유를 함께 남겨야 한다.
 
 ## 현재 owner 확인과 packet 연결
 
@@ -127,9 +153,14 @@ uniform layer도 materialize될 수 있는 2,048 bytes와 제어 비용을 예�
 canonical owner의 새 게시·제거·reload는 **처음 source에서 빠져 있던 이웃의 변경까지** 이전 source를 무효화한다.
 
 resident revision만으로 availability/ticket 변경을 전부 알 수는 없다. caller가 선택한 available 목록이나 eligibility가 달라지면
-`begin` 또는 `cancel`로 domain도 갱신해야 한다. 다른 world/domain·이전 요청·중간 결과·이미 수락한 중복은 거부하며 실패 결과의 lease를 분리하지 않는다.
+`begin` 또는 `cancel`로 domain도 갱신해야 한다. 다른 world/domain·이전 요청·중간 결과·이미 수락한 중복은
+resident 승인 전에 거부하며 실패 결과의 lease를 분리하지 않는다.
 
-`ready(owner)`는 domain과 canonical owner를 함께 빌린다. `ReadyLighting`은 coherent block/sky 완료본이지만
+청크 제거 뒤 `ready(owner)`가 `None`이 되어도 domain이 보관한 stale 완료본의 메모리는 자동으로 환급되지 않는다.
+명시적인 `cancel`, 새 `begin`, domain 해제가 resident 결과와 그 source의 원래 청크 lease를 해제한다.
+서로 겹치는 여러 domain의 우선순위와 취소는 호출자가 조정해야 한다.
+
+`ready(owner)`는 resident 완료본을 가진 domain과 canonical owner를 함께 빌린다. `ReadyLighting`은 coherent block/sky 완료본이지만
 chunk status·send-sync·spawn·Play 준비 완료 표식은 아니다. `PacketLightSnapshot::from_ready`는 선택 domain 밖 청크를 allocation 전에 거부한다.
 독립 `PacketLightSnapshot::new`는 caller가 같은 revision의 snapshot을 선택했다는 조건을 별도로 충족해야 한다.
 
@@ -140,7 +171,9 @@ storage를 packet으로 연결한 성공과 실제 전송의 인과관계·BE up
 
 ## 현재 검증 근거
 
-다음 수치는 로컬 보고서의 실행 범위이며 단위가 서로 다르다. 합산해 전체 기능 완료율을 만들지 않는다.
+기존 커널·초기 통합 수치는 `5e14ec7`까지의 근거다. 해당 source의 [CI33973360687](https://github.com/Love0118/Arrow-MC/actions/runs/33973360687)는
+네 native 플랫폼의 debug/release 각각612통과·37선택제외를 확인했으며 새 resident 이전을 검증한 CI가 아니다.
+아래 수치는 실행 범위와 단위가 서로 다르므로 합산해 전체 기능 완료율을 만들지 않는다.
 
 | 범위 | 실제 근거 | 한계 |
 | --- | --- | --- |
@@ -154,6 +187,9 @@ storage를 packet으로 연결한 성공과 실제 전송의 인과관계·BE up
 | 초기 work/owner 통합 | work8·owner7, source metadata 선예약·동일 domain/revision·실제 canonical→공용 CPU→packet→TCP 검증, 두 독립 리뷰 통과 | 전체 world status·Play coordinator 미구현 |
 | 공용 CPU lifecycle | 일반5·결정적 gate4개, constructed/running·queued·ready 취소와 wait 재개, 예산·작업 보존·worker 증설 검증, 두 독립 리뷰 통과 | 64단위는 wall-clock 지연 상한이 아님 |
 | 초기 block/sky 조합 | 실제 초기화한 Java `LevelLightEngine`의 2영역·216개 전체 layer·884,736 nibble을 무제한/7단위 실행 각각과 대조. 7단위 재개4,656회. Debug·release와 독립 재실행 통과 | fresh initial relighting이며 저장 light 복원·Threaded callback 시험 아님 |
+| 후속 resident 비용 helper | `world_lighting_retention`5개와 내부 arithmetic3개 debug/release 통과. uniform/allocated-zero·COW·빈 snapshot·sky top·spare capacity·같은 Arc 중복·overflow·오래된 source 수명 검증. 두 독립 검수 통과 | helper fixture의 `CompletedLighting`120,084bytes는 runtime resident wrapper 등의72bytes를 제외한 값. 별도 설정 최대37,750,312bytes와 source2,456bytes는 위 CPU fixture와 합치지 않음 |
+| 후속 resident runtime | `runtime_resident_lighting`6개와 resident ledger overflow 내부1개 로컬 통과. 완료본 이전 후 CPU slot/bytes 반환, 목적지 실패·재시도·block-only/sky 결과의 상주 합계 검증. 위 단일 fixture의8,392,584→120,156bytes | 새 배치의 전체/native 검증 대기. RSS·속도 측정 아님 |
+| 후속 resident owner·TCP | `world_lighting_owner`10개 로컬 통과. 실제 Anvil→공용 CPU→resident→packet→queue→TCP를 `max_jobs = 1`로 실행. accept 직후와 packet write 뒤 CPU slot/bytes0, reader/write 동안 resident1개·정확한 charge 유지, cancel 뒤0 | owner/status·Play 완료 아님. 한 byte 부족 실패의 동일 완료본 재시도·공유 예산 압력·unload 후 stale domain 수명도 검증 |
 
 원문을 읽은 뒤 독립 Rust 자료구조·API와 공개 Java API observer를 작성했다. Java/Pumpkin 본문 복사 또는 clean-room 작업이라고 주장하지 않는다.
 공식 JAR·bulk data·관측 출력은 형제 로컬 `Decompile`에 남기며 배포 코드에 넣지 않는다.

@@ -17,8 +17,9 @@ mod lighting;
 mod packet;
 mod storage;
 pub use lighting::{
-    LightingCompletion, LightingGrowth, LightingJobError, LightingReserveError, LightingTask,
-    MAX_LIGHTING_SLICE_UNITS, PendingLighting,
+    LightingAdoptionError, LightingAdoptionReason, LightingCompletion, LightingGrowth,
+    LightingJobError, LightingReserveError, LightingTask, MAX_LIGHTING_SLICE_UNITS,
+    PendingLighting, ResidentLighting, ResidentLightingBudget, ResidentLightingStats,
 };
 pub use packet::{
     LOGIN_KEY_JOB_BUFFER_BYTES, LoginKeyJobError, LoginKeyOutput, LoginKeyTask, PendingLoginKey,

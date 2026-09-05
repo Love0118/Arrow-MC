@@ -187,6 +187,25 @@ pub struct LightSnapshot {
     inner: Arc<SnapshotData>,
 }
 impl LightSnapshot {
+    /// Conservative reachable retention, computed without allocation or mutation.
+    /// Includes SnapshotData/Arc and metadata-budget controls, both Vec capacities,
+    /// and every referenced layer's full potential payload plus layer-budget
+    /// control. Shared references are counted again rather than tracked globally.
+    /// Empty implicit layers retain the same payload allowance as allocated zero;
+    /// reading this value never materializes either representation. The inline
+    /// LightSnapshot handle belongs to its enclosing owner and is excluded here.
+    /// This is an admission allowance, not RSS or the shared budget's live usage.
+    pub fn retained_bytes(&self) -> Result<usize, StorageError> {
+        let mut bytes =
+            snapshot_backing_bytes(self.inner.layers.capacity(), self.inner.tops.capacity())?;
+        for entry in &self.inner.layers {
+            bytes = bytes
+                .checked_add(layer_backing_bytes(entry.layer.value.heap_bytes())?)
+                .ok_or(StorageError::MetadataLimit)?;
+        }
+        Ok(bytes)
+    }
+
     pub fn kind(&self) -> LightKind {
         self.inner.kind
     }
@@ -224,6 +243,30 @@ impl LightSnapshot {
     pub fn sections(&self) -> impl Iterator<Item = LightSection> + '_ {
         self.inner.layers.iter().map(|entry| entry.key)
     }
+}
+
+fn snapshot_backing_bytes(
+    layer_capacity: usize,
+    top_capacity: usize,
+) -> Result<usize, StorageError> {
+    let bytes = size_of::<SnapshotData>()
+        .checked_add(2 * size_of::<usize>())
+        .and_then(|bytes| bytes.checked_add(size_of::<Budget>() + 2 * size_of::<usize>()))
+        .and_then(|bytes| {
+            bytes.checked_add(layer_capacity.checked_mul(size_of::<SnapshotLayer>())?)
+        })
+        .and_then(|bytes| bytes.checked_add(top_capacity.checked_mul(size_of::<SnapshotTop>())?));
+    bytes.ok_or(StorageError::MetadataLimit)
+}
+
+fn layer_backing_bytes(payload_capacity: usize) -> Result<usize, StorageError> {
+    // Preserve the existing 2KiB potential payload reservation for uniform
+    // layers, while accounting any larger actual capacity conservatively too.
+    payload_capacity
+        .max(LAYER_BYTES)
+        .checked_add(LAYER_RESERVATION_BYTES - LAYER_BYTES)
+        .and_then(|bytes| bytes.checked_add(size_of::<Budget>() + 2 * size_of::<usize>()))
+        .ok_or(StorageError::MetadataLimit)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1160,4 +1203,92 @@ fn offset(key: LightSection, x: i32, y: i32, z: i32) -> Result<LightSection, Sto
             .checked_add(z)
             .ok_or(StorageError::InvalidCoordinate)?,
     })
+}
+
+#[cfg(test)]
+mod retention_tests {
+    use super::*;
+
+    fn empty_snapshot(layer_capacity: usize, top_capacity: usize) -> LightSnapshot {
+        let metadata = Budget::new(1 << 20);
+        let (layers, layers_lease) = vector(layer_capacity, &metadata).unwrap();
+        let (tops, tops_lease) = vector(top_capacity, &metadata).unwrap();
+        let body_lease = metadata
+            .reserve(size_of::<SnapshotData>() + 2 * size_of::<usize>())
+            .unwrap();
+        LightSnapshot {
+            inner: Arc::new(SnapshotData {
+                kind: LightKind::Block,
+                layers,
+                tops,
+                lowest: i32::MAX,
+                _layers_lease: layers_lease,
+                _tops_lease: tops_lease,
+                _body_lease: body_lease,
+            }),
+        }
+    }
+
+    #[test]
+    fn snapshot_retention_uses_spare_metadata_capacity_without_materializing_layers() {
+        let empty = empty_snapshot(0, 0);
+        let spare = empty_snapshot(64, 32);
+        assert_eq!(empty.sections().count(), 0);
+        assert_eq!(spare.sections().count(), 0);
+        let additional = spare.inner.layers.capacity() * size_of::<SnapshotLayer>()
+            + spare.inner.tops.capacity() * size_of::<SnapshotTop>();
+        assert_eq!(
+            spare.retained_bytes().unwrap() - empty.retained_bytes().unwrap(),
+            additional
+        );
+        assert!(empty.retained_bytes().unwrap() > size_of::<SnapshotData>());
+    }
+
+    #[test]
+    fn repeated_shared_layer_references_receive_separate_conservative_allowances() {
+        let mut snapshot = empty_snapshot(2, 0);
+        let before = snapshot.retained_bytes().unwrap();
+        let budget = Budget::new(LAYER_RESERVATION_BYTES);
+        let layer = Arc::new(ChargedLayer {
+            value: DataLayer::uniform(0),
+            _lease: budget.reserve(LAYER_RESERVATION_BYTES).unwrap(),
+        });
+        let inner = Arc::get_mut(&mut snapshot.inner).unwrap();
+        for x in 0..2 {
+            inner.layers.push(SnapshotLayer {
+                key: LightSection { x, y: 0, z: 0 },
+                layer: Arc::clone(&layer),
+            });
+        }
+        let actual = snapshot.retained_bytes().unwrap();
+        assert_eq!(
+            actual - before,
+            2 * (LAYER_RESERVATION_BYTES + size_of::<Budget>() + 2 * size_of::<usize>())
+        );
+        assert_eq!(budget.used.load(Ordering::Relaxed), LAYER_RESERVATION_BYTES);
+        assert!(layer.value.is_definitely_homogeneous());
+    }
+
+    #[test]
+    fn retention_arithmetic_rejects_impossible_capacities_without_allocating_them() {
+        assert_eq!(
+            snapshot_backing_bytes(usize::MAX, 0),
+            Err(StorageError::MetadataLimit)
+        );
+        assert_eq!(
+            snapshot_backing_bytes(0, usize::MAX),
+            Err(StorageError::MetadataLimit)
+        );
+        assert_eq!(
+            layer_backing_bytes(usize::MAX),
+            Err(StorageError::MetadataLimit)
+        );
+        let overhead =
+            LAYER_RESERVATION_BYTES - LAYER_BYTES + size_of::<Budget>() + 2 * size_of::<usize>();
+        assert_eq!(layer_backing_bytes(usize::MAX - overhead), Ok(usize::MAX));
+        assert_eq!(
+            layer_backing_bytes(usize::MAX - overhead + 1),
+            Err(StorageError::MetadataLimit)
+        );
+    }
 }

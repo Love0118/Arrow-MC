@@ -437,14 +437,42 @@ impl LightingWork {
 
 /// Both snapshots describe the same completed immutable source domain. Standalone
 /// users retain storage budgets in snapshot backing. Shared-runtime delivery must
-/// additionally retain its CPU lease around this value and avoid exposing clones
-/// that could outlive that lease; the runtime getter is crate-private.
+/// additionally retain its CPU or adopted resident reservation around this value
+/// and avoid exposing clones that could outlive that reservation; the runtime
+/// getter is crate-private.
 pub struct CompletedLighting {
     source: LightingSource,
     block: LightSnapshot,
     sky: Option<LightSnapshot>,
 }
 impl CompletedLighting {
+    /// Conservative resident allowance for this inline owner and its reachable
+    /// source/snapshot backing, with checked arithmetic and no allocation.
+    /// SourceStamp and optional canonical-owner revision retain two small Arc
+    /// controls; reserving both is conservative for a producer-owned source.
+    /// The shared registry and canonical ResidentChunk palette allocations keep
+    /// their original leases and are not duplicated here. Freed engine queues,
+    /// source caches, working storage arrays and configured maxima are excluded.
+    pub fn retained_bytes(&self) -> Result<usize, LightingError> {
+        let source = self
+            .source
+            .metadata_bytes()
+            .checked_add(self.source.owned_section_bytes())
+            .ok_or(LightingError::AllocationLimit)?;
+        let block = self.block.retained_bytes()?;
+        let mut bytes = size_of::<Self>()
+            .checked_add(source)
+            .and_then(|bytes| bytes.checked_add(4 * size_of::<usize>()))
+            .and_then(|bytes| bytes.checked_add(block))
+            .ok_or(LightingError::AllocationLimit)?;
+        if let Some(sky) = &self.sky {
+            bytes = bytes
+                .checked_add(sky.retained_bytes()?)
+                .ok_or(LightingError::AllocationLimit)?;
+        }
+        Ok(bytes)
+    }
+
     pub fn source(&self) -> &LightingSource {
         &self.source
     }

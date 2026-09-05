@@ -8,7 +8,10 @@ use crate::world::lighting::{
     work::{CompletedLighting, LightingError, LightingLimits, LightingWork, WorkProgress},
 };
 use crate::world::{loading::ChunkLoadingOwner, preparation::ChunkAddress};
-use std::{fmt, sync::Arc};
+use std::{
+    fmt,
+    sync::{Arc, Mutex},
+};
 use tokio::sync::oneshot;
 
 /// One submission never exceeds this cooperative work quantum. A unit can be a
@@ -93,6 +96,124 @@ pub struct LightingCompletion {
     payload: Payload,
     progress: Result<WorkProgress, LightingJobError>,
     lease: Lease,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ResidentLightingStats {
+    pub results: usize,
+    pub used_bytes: usize,
+    pub peak_bytes: usize,
+}
+struct ResidentLightingState {
+    max_bytes: usize,
+    stats: Mutex<ResidentLightingStats>,
+}
+/// Clones share one ledger; creating a budget per domain would not provide an
+/// aggregate residency limit. Its leases keep this ledger alive independently.
+#[derive(Clone)]
+pub struct ResidentLightingBudget {
+    shared: Arc<ResidentLightingState>,
+}
+struct ResidentLightingLease {
+    shared: Arc<ResidentLightingState>,
+    bytes: usize,
+}
+/// Immutable completed payload is dropped before its resident reservation. No
+/// public snapshot/source clone or detached completed-work API is exposed.
+pub struct ResidentLighting {
+    completed: CompletedLighting,
+    lease: ResidentLightingLease,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LightingAdoptionReason {
+    Incomplete,
+    ByteLimit,
+    Overflow,
+}
+/// Any failed destination admission retains the exact CPU result and its lease.
+pub struct LightingAdoptionError {
+    reason: LightingAdoptionReason,
+    completion: LightingCompletion,
+}
+impl LightingAdoptionError {
+    pub fn reason(&self) -> LightingAdoptionReason {
+        self.reason
+    }
+    pub fn into_completion(self) -> LightingCompletion {
+        self.completion
+    }
+}
+impl fmt::Debug for LightingAdoptionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("LightingAdoptionError")
+            .field(&self.reason)
+            .finish()
+    }
+}
+impl fmt::Display for LightingAdoptionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "resident lighting adoption: {:?}", self.reason)
+    }
+}
+impl std::error::Error for LightingAdoptionError {}
+
+impl ResidentLightingBudget {
+    pub fn new(max_bytes: usize) -> Self {
+        Self {
+            shared: Arc::new(ResidentLightingState {
+                max_bytes,
+                stats: Mutex::new(ResidentLightingStats::default()),
+            }),
+        }
+    }
+    pub fn stats(&self) -> ResidentLightingStats {
+        *lock(&self.shared.stats)
+    }
+    fn reserve(&self, bytes: usize) -> Result<ResidentLightingLease, LightingAdoptionReason> {
+        {
+            let mut stats = lock(&self.shared.stats);
+            let next_bytes = stats
+                .used_bytes
+                .checked_add(bytes)
+                .ok_or(LightingAdoptionReason::Overflow)?;
+            if next_bytes > self.shared.max_bytes {
+                return Err(LightingAdoptionReason::ByteLimit);
+            }
+            let next_results = stats
+                .results
+                .checked_add(1)
+                .ok_or(LightingAdoptionReason::Overflow)?;
+            stats.used_bytes = next_bytes;
+            stats.results = next_results;
+            stats.peak_bytes = stats.peak_bytes.max(next_bytes);
+        }
+        Ok(ResidentLightingLease {
+            shared: Arc::clone(&self.shared),
+            bytes,
+        })
+    }
+}
+impl ResidentLighting {
+    pub fn retained_bytes(&self) -> usize {
+        self.lease.bytes
+    }
+    pub fn light_level(&self, kind: LightKind, pos: LightBlock) -> Option<u8> {
+        match kind {
+            LightKind::Block => Some(self.completed.block().get_level(pos)),
+            LightKind::Sky => self.completed.sky().map(|sky| sky.get_level(pos)),
+        }
+    }
+    pub(crate) fn completed(&self) -> &CompletedLighting {
+        &self.completed
+    }
+}
+impl Drop for ResidentLightingLease {
+    fn drop(&mut self) {
+        let mut stats = lock(&self.shared.stats);
+        stats.results -= 1;
+        stats.used_bytes -= self.bytes;
+    }
 }
 
 impl CpuPool {
@@ -240,6 +361,67 @@ impl LightingCompletion {
     pub fn reserved_bytes(&self) -> usize {
         self.lease.bytes
     }
+    /// Retained completed backing and conservative control allowances, excluding
+    /// freed working queues. Uniform layers keep their full possible backing
+    /// reservation. This is an admission charge, not an allocator/RSS measurement.
+    pub fn resident_bytes(&self) -> Result<usize, LightingAdoptionReason> {
+        let completed = self.completed().ok_or(LightingAdoptionReason::Incomplete)?;
+        let payload = completed
+            .retained_bytes()
+            .map_err(|_| LightingAdoptionReason::Overflow)?;
+        // The payload helper already includes the inline CompletedLighting body.
+        // Conservatively count the shared ledger controls once for each result.
+        payload
+            .checked_add(size_of::<ResidentLighting>() - size_of::<CompletedLighting>())
+            .and_then(|bytes| bytes.checked_add(size_of::<ResidentLightingState>()))
+            .and_then(|bytes| bytes.checked_add(2 * size_of::<usize>()))
+            .ok_or(LightingAdoptionReason::Overflow)
+    }
+    /// Destination admission precedes ownership movement and CPU refund. Failure
+    /// returns the original result; success copies no source, layer or palette.
+    #[expect(
+        clippy::result_large_err,
+        reason = "failed adoption returns the same charged completion without allocation"
+    )]
+    pub fn try_adopt(
+        self,
+        budget: &ResidentLightingBudget,
+    ) -> Result<ResidentLighting, LightingAdoptionError> {
+        let bytes = match self.resident_bytes() {
+            Ok(bytes) => bytes,
+            Err(reason) => {
+                return Err(LightingAdoptionError {
+                    reason,
+                    completion: self,
+                });
+            }
+        };
+        let resident_lease = match budget.reserve(bytes) {
+            Ok(lease) => lease,
+            Err(reason) => {
+                return Err(LightingAdoptionError {
+                    reason,
+                    completion: self,
+                });
+            }
+        };
+        let Self {
+            payload,
+            progress,
+            lease,
+        } = self;
+        drop(progress);
+        let Payload::Complete(completed) = payload else {
+            unreachable!("completed admission checked")
+        };
+        let resident = ResidentLighting {
+            completed,
+            lease: resident_lease,
+        };
+        // Never hold the destination mutex while acquiring the CPU ledger mutex.
+        drop(lease);
+        Ok(resident)
+    }
     pub fn light_level(&self, kind: LightKind, pos: LightBlock) -> Option<u8> {
         let completed = self.completed()?;
         match kind {
@@ -364,3 +546,38 @@ pub(super) fn run(job: LightingJob, shared: &Shared) {
 #[cfg(test)]
 #[path = "lighting_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod resident_accounting_tests {
+    use super::*;
+
+    #[test]
+    fn overflow_and_byte_limit_leave_both_resident_counters_unchanged() {
+        let budget = ResidentLightingBudget::new(usize::MAX);
+        for stats in [
+            ResidentLightingStats {
+                results: 1,
+                used_bytes: usize::MAX,
+                peak_bytes: usize::MAX,
+            },
+            ResidentLightingStats {
+                results: usize::MAX,
+                used_bytes: 0,
+                peak_bytes: 0,
+            },
+        ] {
+            *lock(&budget.shared.stats) = stats;
+            assert!(matches!(
+                budget.reserve(1),
+                Err(LightingAdoptionReason::Overflow)
+            ));
+            assert_eq!(budget.stats(), stats);
+        }
+        let small = ResidentLightingBudget::new(1);
+        assert!(matches!(
+            small.reserve(2),
+            Err(LightingAdoptionReason::ByteLimit)
+        ));
+        assert_eq!(small.stats(), ResidentLightingStats::default());
+    }
+}
