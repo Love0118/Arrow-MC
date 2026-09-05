@@ -6,8 +6,15 @@
 
 | Package | SPDX 선언 | 원문 고지 |
 | --- | --- | --- |
+| block-buffer 0.10.4 | MIT OR Apache-2.0 | [LICENSE-APACHE](block-buffer-0.10.4/LICENSE-APACHE), [LICENSE-MIT](block-buffer-0.10.4/LICENSE-MIT) |
 | bytes 1.12.1 | MIT | [LICENSE](bytes-1.12.1/LICENSE) |
+| cfg-if 1.0.4 | MIT OR Apache-2.0 | [LICENSE-APACHE](cfg-if-1.0.4/LICENSE-APACHE), [LICENSE-MIT](cfg-if-1.0.4/LICENSE-MIT) |
+| cpufeatures 0.2.17 | MIT OR Apache-2.0 | [LICENSE-APACHE](cpufeatures-0.2.17/LICENSE-APACHE), [LICENSE-MIT](cpufeatures-0.2.17/LICENSE-MIT) |
+| crypto-common 0.1.7 | MIT OR Apache-2.0 | [LICENSE-APACHE](crypto-common-0.1.7/LICENSE-APACHE), [LICENSE-MIT](crypto-common-0.1.7/LICENSE-MIT) |
+| digest 0.10.7 | MIT OR Apache-2.0 | [LICENSE-APACHE](digest-0.10.7/LICENSE-APACHE), [LICENSE-MIT](digest-0.10.7/LICENSE-MIT) |
 | errno 0.3.14 | MIT OR Apache-2.0 | [LICENSE-APACHE](errno-0.3.14/LICENSE-APACHE), [LICENSE-MIT](errno-0.3.14/LICENSE-MIT) |
+| flate2 1.1.10 | MIT OR Apache-2.0 | [LICENSE-APACHE](flate2-1.1.10/LICENSE-APACHE), [LICENSE-MIT](flate2-1.1.10/LICENSE-MIT) |
+| generic-array 0.14.7 | MIT | [LICENSE](generic-array-0.14.7/LICENSE) |
 | itoa 1.0.18 | MIT OR Apache-2.0 | [LICENSE-APACHE](itoa-1.0.18/LICENSE-APACHE), [LICENSE-MIT](itoa-1.0.18/LICENSE-MIT) |
 | libc 0.2.189 | MIT OR Apache-2.0 | [LICENSE-APACHE](libc-0.2.189/LICENSE-APACHE), [LICENSE-MIT](libc-0.2.189/LICENSE-MIT) |
 | memchr 2.8.3 | Unlicense OR MIT | [COPYING](memchr-2.8.3/COPYING), [LICENSE-MIT](memchr-2.8.3/LICENSE-MIT) |
@@ -19,15 +26,19 @@
 | serde_core 1.0.229 | MIT OR Apache-2.0 | [LICENSE-APACHE](serde_core-1.0.229/LICENSE-APACHE), [LICENSE-MIT](serde_core-1.0.229/LICENSE-MIT) |
 | serde_derive 1.0.229 | MIT OR Apache-2.0 | [LICENSE-APACHE](serde_derive-1.0.229/LICENSE-APACHE), [LICENSE-MIT](serde_derive-1.0.229/LICENSE-MIT) |
 | serde_json 1.0.151 | MIT OR Apache-2.0 | [LICENSE-APACHE](serde_json-1.0.151/LICENSE-APACHE), [LICENSE-MIT](serde_json-1.0.151/LICENSE-MIT) |
+| sha2 0.10.9 | MIT OR Apache-2.0 | [LICENSE-APACHE](sha2-0.10.9/LICENSE-APACHE), [LICENSE-MIT](sha2-0.10.9/LICENSE-MIT) |
 | signal-hook-registry 1.4.8 | MIT OR Apache-2.0 | [LICENSE-APACHE](signal-hook-registry-1.4.8/LICENSE-APACHE), [LICENSE-MIT](signal-hook-registry-1.4.8/LICENSE-MIT) |
 | socket2 0.6.5 | MIT OR Apache-2.0 | [LICENSE-APACHE](socket2-0.6.5/LICENSE-APACHE), [LICENSE-MIT](socket2-0.6.5/LICENSE-MIT) |
 | syn 3.0.5 | MIT OR Apache-2.0 | [LICENSE-APACHE](syn-3.0.5/LICENSE-APACHE), [LICENSE-MIT](syn-3.0.5/LICENSE-MIT) |
 | tokio 1.53.1 | MIT | [LICENSE](tokio-1.53.1/LICENSE) |
 | tokio-macros 2.7.2 | MIT | [LICENSE](tokio-macros-2.7.2/LICENSE) |
+| typenum 1.20.1 | MIT OR Apache-2.0 | [LICENSE](typenum-1.20.1/LICENSE), [LICENSE-APACHE](typenum-1.20.1/LICENSE-APACHE), [LICENSE-MIT](typenum-1.20.1/LICENSE-MIT) |
 | unicode-ident 1.0.24 | (MIT OR Apache-2.0) AND Unicode-3.0 | [LICENSE-APACHE](unicode-ident-1.0.24/LICENSE-APACHE), [LICENSE-MIT](unicode-ident-1.0.24/LICENSE-MIT), [LICENSE-UNICODE](unicode-ident-1.0.24/LICENSE-UNICODE) |
+| version_check 0.9.5 | MIT/Apache-2.0 | [LICENSE-APACHE](version_check-0.9.5/LICENSE-APACHE), [LICENSE-MIT](version_check-0.9.5/LICENSE-MIT) |
 | wasi 0.11.1+wasi-snapshot-preview1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | [LICENSE-APACHE](wasi-0.11.1+wasi-snapshot-preview1/LICENSE-APACHE), [LICENSE-Apache-2.0_WITH_LLVM-exception](wasi-0.11.1+wasi-snapshot-preview1/LICENSE-Apache-2.0_WITH_LLVM-exception), [LICENSE-MIT](wasi-0.11.1+wasi-snapshot-preview1/LICENSE-MIT) |
 | windows-link 0.2.1 | MIT OR Apache-2.0 | [license-apache-2.0](windows-link-0.2.1/license-apache-2.0), [license-mit](windows-link-0.2.1/license-mit) |
 | windows-sys 0.61.2 | MIT OR Apache-2.0 | [license-apache-2.0](windows-sys-0.61.2/license-apache-2.0), [license-mit](windows-sys-0.61.2/license-mit) |
+| zlib-rs 0.6.7 | Zlib | [LICENSE](zlib-rs-0.6.7/LICENSE) |
 | zmij 1.0.23 | MIT | [LICENSE-MIT](zmij-1.0.23/LICENSE-MIT) |
 
 재생성: `python tools/collect_rust_notices.py`; 검사: 같은 명령에 `--check`.

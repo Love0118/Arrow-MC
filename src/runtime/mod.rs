@@ -329,6 +329,14 @@ impl PendingSection {
         )
     }
 
+    #[cfg(test)]
+    pub(crate) fn submit_with_gate(
+        self,
+        gate: Arc<TestGate>,
+    ) -> Result<SectionTask, AdmissionError> {
+        self.enqueue(Some(gate))
+    }
+
     fn enqueue(
         self,
         #[cfg(test)] gate: Option<Arc<TestGate>>,
@@ -513,10 +521,10 @@ fn work(shared: Arc<Shared>) {
 mod tests;
 
 #[cfg(test)]
-struct TestGate {
-    started: std::sync::mpsc::SyncSender<()>,
-    released: Mutex<bool>,
-    changed: Condvar,
+pub(crate) struct TestGate {
+    pub(crate) started: std::sync::mpsc::SyncSender<()>,
+    pub(crate) released: Mutex<bool>,
+    pub(crate) changed: Condvar,
 }
 
 #[cfg(test)]
@@ -529,7 +537,7 @@ impl TestGate {
         }
     }
 
-    fn release(&self) {
+    pub(crate) fn release(&self) {
         *lock(&self.released) = true;
         self.changed.notify_all();
     }

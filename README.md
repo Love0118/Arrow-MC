@@ -6,6 +6,8 @@ Java 디컴파일본과 실제 실행 결과를 동작 기준으로 삼고, Pump
 
 현재 단계는 **실행 가능한 서버와 기반 기능 구현 진행 중**입니다. Java 서버 목록의 status/ping에 실제 TCP로 응답합니다.
 청크 section palette/packed storage와 제한된 CPU worker의 병렬 section 준비도 구현했습니다.
+패킷 압축, 변경 revision을 검증하는 section 준비 소유자와 실제 Vanilla configuration 데이터 준비·읽기를 추가했습니다.
+현재 범위와 남은 접속 단계를 [접속 준비 문서](docs/connection-preparation.md)에 기록합니다.
 인증·로그인 완료·플레이·월드 생성·게임 tick은 아직 구현하지 않았습니다.
 [설계 기준](docs/architecture.md)과 [Vanilla/Pumpkin 비교·최적화 계획](docs/optimization-plan.md)에 지원 범위,
 동기·비동기 실행 경계, 가져올 최적화와 직접 가져오지 않을 동작을 정리했습니다.
@@ -27,7 +29,7 @@ NBT·wire·section kernel·CPU pool 자체에는 추가 외부 framework를 도�
 `src/snbt`는 현대 SNBT parser·compact/pretty writer와 UTF-16 진단을 처리합니다. [범위·자원 정책·대조 근거](docs/snbt.md)를 별도로 기록합니다.
 `src/nbt/path`와 `src/nbt/predicate`는 경로 조회·생성·변경·삭제와 bounded 비교를 처리하고, 여섯 NumericTag 변환도 제공합니다.
 [NBT 경로 범위와 API 차이](docs/nbt-path.md)를 구분해 기록합니다. `src/wire`는 VarInt/VarLong을 처리합니다.
-NBT ops·압축·registry/component와 item gameplay는 아직 구현 전입니다.
+NBT ops·디스크 NBT 압축·typed registry/component와 item gameplay는 아직 구현 전입니다.
 로컬 디코더 메모리 예산은 요청한 backing allocation의 누계이며 RSS 상한을 뜻하지 않습니다. writer는 추가 출력 길이를 제한합니다.
 
 ```powershell

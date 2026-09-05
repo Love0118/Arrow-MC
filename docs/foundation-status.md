@@ -5,8 +5,10 @@
 ## 현재 실행 경로
 
 실제 Java status/ping 서버, section palette/packed storage, 고정 worker의 병렬 section 준비를 구현했다.
+이번 묶음은 packet compression·section 변경/완료 소유자·실제 configuration snapshot 준비와 검증을 추가했다.
+[접속 준비 범위](connection-preparation.md)에 구현·자원·남은 통합 경계를 기록했다.
 [실행과 자원 경계](server-runtime.md)에 사용 방법과 현재 제한을 기록했다. 로그인 완료·플레이·월드 생성·게임 tick은 남아 있다.
-로컬 기본 전체 테스트198개가 통과했고, Clippy·format을 통과했다. 선택 검증7개는 기본 실행에서 제외한다.
+현재 로컬 전체 debug/release235개가 통과했고, Clippy·format을 통과했다. 선택 검증9개는 기본 실행에서 제외한다.
 서버 실제 TCP/CLI12개·section18개·runtime13개와 독립 검수, 공식 codec/UTF-8/section 대조를 포함한다.
 
 commit `7a3e90e`의 [CI run33953216241](https://github.com/Love0118/Arrow-MC/actions/runs/33953216241)에서 네 native 플랫폼
@@ -14,10 +16,26 @@ commit `7a3e90e`의 [CI run33953216241](https://github.com/Love0118/Arrow-MC/act
 lock 기반 의존성 고지 검사도 성공했다. 최초 `d86860f`는 Unix CLI helper의 불필요한 `mut` lint로 실패했고,
 Windows 전용 scope로 수정해 재검증했다. 실행·section 병렬 준비의 성공이며 로그인·게임플레이 완성은 아니다.
 
-Tokio1.53.1·serde_json1.0.151을 고정해 사용하며 단일 package의 library+binary를 유지한다.
+Tokio1.53.1·serde_json1.0.151·flate2 1.1.10(zlib-rs)·sha2 0.10.9를 고정하며 단일 package의 library+binary를 유지한다.
 네트워크 대기와 종료 조율에 필요한 Tokio 기능만 사용하고 CPU section 작업은 별도 고정 pool로 수행한다.
-모든 lock package23개의 [원문 의존성 고지](../third_party/rust/README.md)를 수집·검사했다.
+모든 lock package34개의 [원문 의존성 고지](../third_party/rust/README.md)를 수집·검사했다.
 이전의 외부 의존성0개는 아래 초기 데이터 기반 snapshot에 해당하며 현재 서버 package 전체의 수치가 아니다.
+
+## 압축·section 변경·configuration 데이터 추가
+
+구현 에이전트 세 역할과 정확성·최적화 리뷰어 두 역할로 진행했다. NBT 묶음은 닫고 실제 접속 준비와
+chunk 변경·병렬 결과 공개에 작업을 분산했다. 압축 기본12개·owner16개·configuration 합성9개 테스트를 추가했다.
+고정 Java 압축132개와 실제 JVM 양방향133개를 통과했고, 실제 configuration32registry/432entry/15tagregistry를 읽었다.
+외부 manifest hash 없이 자체 descriptor만 검사하던 문제를 독립 리뷰에서 재현해 수정했으며,
+tags 삭제·core payload 변조 후 자체 hash를 재작성한 두 사례가 원래 신뢰값에서 거부됨을 확인했다.
+두 리뷰 역할의 현재 범위 차단 사항은 해결됐다. Python32개 중30개 통과, 선택 Unicode·Windows symlink 권한2개는 제외했다.
+최종 변경 커밋의 네 native CI 판정은 후속 기록으로 구분한다.
+
+현재 Windows 단일 server build 측정은 빈 target/따뜻한 registry·OS cache에서 debug 최초8.367s,
+변경 없음0.080s, server module timestamp 재컴파일0.991s, release 최초8.887s였다.
+debug/release 실행 파일은1,383,424/697,344bytes다. 사용하지 않는 library 경로는 executable link에서 제거될 수 있다.
+이전 server 묶음의7.355/0.089/0.999/8.204s와 단일 표본만 비교하여 성능 회귀·향상을 단정하지 않는다.
+build peak RAM은 측정하지 않았고, 원본·source hash는 로컬 `Roadmap/reviews/connection-build-cost.json`에 보존했다.
 
 ## NBT 경로 기반 추가
 

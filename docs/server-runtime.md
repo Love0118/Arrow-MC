@@ -27,7 +27,8 @@ deadline은 byte마다 초기화하지 않는다. 선언된 프레임과 응답 
 Tokio1.53.1의 net/io-util/time/sync/signal/rt-multi-thread/macros만 사용한다.
 `select!`는 shutdown·accept·task 완료를 명확히 다루기 위해 사용하며 자체 async polling framework를 만들지 않는다.
 serde_json1.0.151로 JSON escape를 처리하고 custom derive 모델을 추가하지 않는다.
-Cargo는23개 registry package를 모든 플랫폼·선택 의존성까지 잠그며, 실제 컴파일 subset은 host와 feature에 따라 다르다.
+압축과 configuration 데이터 검증을 포함한 Cargo lock은34개 registry package를 모든 플랫폼·선택 의존성까지 잠근다.
+실제 컴파일 subset은 host와 feature에 따라 다르다.
 [원문 라이선스 고지](../third_party/rust/README.md)는 lock hash와 함께 보존한다.
 
 ## 청크 section 저장과 wire 값
@@ -66,9 +67,12 @@ worker가 소비자의 결과 수령을 기다리지 않으므로 한 worker·�
 buffer를 permit과 분리해서 소유할 수 있는 API는 제공하지 않는다. 다른 예산으로 복사하거나 전송한다면 그 소비자가 비용을 책임진다.
 worker stack은 각2MiB이며 queue/control/Arc·allocator metadata 및 OS 메모리는 payload 예산과 별도다.
 
-`SectionKey`는 identity와 revision을 보존할 뿐 현재 월드 상태를 직접 확인하지 않는다.
-서버의 world owner와 tick 적용 단계, I/O+CPU 전체 thread 예산 통합은 아직 남아 있다.
+`SectionKey`는 identity와 revision을 보존하며 `world::preparation::SectionPreparationOwner`가 실제 소유한
+section 변경과 epoch·generation·revision 검증을 담당한다. 오래된 완료 결과는 cache에 들어가지 않는다.
+게임 tick 적용 단계, I/O+CPU 전체 thread 예산 통합은 아직 남아 있다.
 이 pool의 완료는 section 준비 병렬화의 검증이며 같은 tick의 상호작용을 병렬화했다는 뜻이 아니다.
+
+소유자의 admission·cache 회수와 압축·configuration 데이터 경계는 [접속 준비 문서](connection-preparation.md)에 있다.
 
 ## 검증과 측정
 

@@ -6,6 +6,8 @@
 //! total admitted connection traffic are bounded without gameplay CPU work on
 //! the I/O executor. The locked protocol behavior is documented in the tests.
 
+pub mod compression;
+pub mod configuration_data;
 mod protocol;
 
 use protocol::{Handshake, TrafficBudget, read_frame, write_frame};

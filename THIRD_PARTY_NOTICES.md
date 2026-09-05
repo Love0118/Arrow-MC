@@ -2,7 +2,8 @@
 
 ## Rust runtime dependencies
 
-The runnable TCP server uses pinned Tokio and serde_json packages. Their resolved
+The server uses pinned Tokio and serde_json packages, flate2 with the zlib-rs
+backend for protocol compression, and sha2 for local snapshot integrity checks. Their resolved
 dependencies have individual notices in [third_party/rust/README.md](third_party/rust/README.md).
 The collector retains the original license/copyright files and records their
 hashes against Cargo.lock, including packages for other supported platforms.
@@ -26,3 +27,6 @@ Source URLs, checksums and regeneration instructions are recorded in
 No Minecraft JAR, decompiled Java implementation, Pumpkin module, or generated
 Minecraft asset/registry dump is bundled by this repository. Local reference
 and verification material is managed separately in the workspace.
+The independently authored Java helper in `tools/oracles/ExportConfigurationData.java`
+invokes official APIs from a separately acquired local JAR. Its generated output
+stays under the sibling `Decompile/bootstrap/` directory and is not bundled here.
