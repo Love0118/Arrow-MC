@@ -41,6 +41,9 @@ NBT binary는 전체 BASE-NBT가 아니다. SNBT·NBT path·의미 연산/visito
 writer 예산은 추가된 논리 출력 bytes이고 기존 Vec capacity를 줄이는 정책이 아니다. 이후 worker/connection memory 예산에 결합해야 한다.
 compound의 정렬 Vec·private ordinal은 초기 구현 선택이며 hot-path 소비자가 생긴 뒤 조회/변경/메모리 비용을 측정한다.
 
-네 플랫폼 native CI workflow를 추가했지만 실제 결과는 개별 run에서 확인한다. 이 문서의 로컬 성공을 다른 OS 실행 성공으로 간주하지 않는다.
+commit `b8dfca1`의 [CI run 33948100994](https://github.com/Love0118/Arrow-MC/actions/runs/33948100994)에서
+Linux x86_64/ARM64·macOS ARM64·Windows x86_64 네 native host의 format/clippy/debug24/release24 테스트와 Python10 테스트가 통과했다.
+각 host triple 확인 단계도 성공했다. Java oracle는 CI에서 ignored이며 위의 Windows 로컬 명시적 실행 결과로만 입증한다.
+최초 workflow는 YAML 구문으로 job 시작 전 실패했고 `b8dfca1`에서 수정하여 성공했다.
 현재 서버 실행기·gameplay·멀티코어 tick/청크 성능은 구현·검증하지 않았다.
 소스를 참조해 독립 설계한 구현이며 [출처 정책](provenance-policy.md)을 따른다. clean-room이나 법적 무위험은 주장하지 않는다.
