@@ -1,0 +1,1457 @@
+{
+  "format_version": 1,
+  "minecraft_version": "26.3-pre-2",
+  "protocol": 1073742158,
+  "java_version": "25.0.3",
+  "scope": "Synthetic packet field codec calls. Payload excludes packet ID and framing. Outer trailing bytes are recorded, not rejected by this harness.",
+  "cases": [
+    {
+      "name": "information_normal",
+      "direction": "serverbound",
+      "packet_id": 0,
+      "payload_hex": "05656e5f7573020001ff01000100",
+      "ok": true,
+      "result": {
+        "language": "en_us",
+        "view_distance": 2,
+        "chat_visibility": 0,
+        "chat_colors": true,
+        "model_customisation": 255,
+        "main_hand": 1,
+        "text_filtering": false,
+        "allows_listing": true,
+        "particle_status": 0
+      },
+      "canonical_hex": "05656e5f7573020001ff01000100",
+      "consumed_bytes": 14,
+      "payload_bytes": 14
+    },
+    {
+      "name": "information_wrapped_-1",
+      "direction": "serverbound",
+      "packet_id": 0,
+      "payload_hex": "0020ffffffff0f01ff010001ffffffff0f",
+      "ok": true,
+      "result": {
+        "language": "",
+        "view_distance": 32,
+        "chat_visibility": 2,
+        "chat_colors": true,
+        "model_customisation": 255,
+        "main_hand": 1,
+        "text_filtering": false,
+        "allows_listing": true,
+        "particle_status": 2
+      },
+      "canonical_hex": "00200201ff01000102",
+      "consumed_bytes": 17,
+      "payload_bytes": 17
+    },
+    {
+      "name": "information_wrapped_3",
+      "direction": "serverbound",
+      "packet_id": 0,
+      "payload_hex": "00200301ff01000103",
+      "ok": true,
+      "result": {
+        "language": "",
+        "view_distance": 32,
+        "chat_visibility": 0,
+        "chat_colors": true,
+        "model_customisation": 255,
+        "main_hand": 1,
+        "text_filtering": false,
+        "allows_listing": true,
+        "particle_status": 0
+      },
+      "canonical_hex": "00200001ff01000100",
+      "consumed_bytes": 9,
+      "payload_bytes": 9
+    },
+    {
+      "name": "information_wrapped_-2147483648",
+      "direction": "serverbound",
+      "packet_id": 0,
+      "payload_hex": "0020808080800801ff0100018080808008",
+      "ok": true,
+      "result": {
+        "language": "",
+        "view_distance": 32,
+        "chat_visibility": 1,
+        "chat_colors": true,
+        "model_customisation": 255,
+        "main_hand": 1,
+        "text_filtering": false,
+        "allows_listing": true,
+        "particle_status": 1
+      },
+      "canonical_hex": "00200101ff01000101",
+      "consumed_bytes": 17,
+      "payload_bytes": 17
+    },
+    {
+      "name": "information_wrapped_2147483647",
+      "direction": "serverbound",
+      "packet_id": 0,
+      "payload_hex": "0020ffffffff0701ff010001ffffffff07",
+      "ok": true,
+      "result": {
+        "language": "",
+        "view_distance": 32,
+        "chat_visibility": 1,
+        "chat_colors": true,
+        "model_customisation": 255,
+        "main_hand": 1,
+        "text_filtering": false,
+        "allows_listing": true,
+        "particle_status": 1
+      },
+      "canonical_hex": "00200101ff01000101",
+      "consumed_bytes": 17,
+      "payload_bytes": 17
+    },
+    {
+      "name": "information_arm_-1",
+      "direction": "serverbound",
+      "packet_id": 0,
+      "payload_hex": "00020001ffffffffff0f000100",
+      "ok": true,
+      "result": {
+        "language": "",
+        "view_distance": 2,
+        "chat_visibility": 0,
+        "chat_colors": true,
+        "model_customisation": 255,
+        "main_hand": 0,
+        "text_filtering": false,
+        "allows_listing": true,
+        "particle_status": 0
+      },
+      "canonical_hex": "00020001ff00000100",
+      "consumed_bytes": 13,
+      "payload_bytes": 13
+    },
+    {
+      "name": "information_arm_2",
+      "direction": "serverbound",
+      "packet_id": 0,
+      "payload_hex": "00020001ff02000100",
+      "ok": true,
+      "result": {
+        "language": "",
+        "view_distance": 2,
+        "chat_visibility": 0,
+        "chat_colors": true,
+        "model_customisation": 255,
+        "main_hand": 0,
+        "text_filtering": false,
+        "allows_listing": true,
+        "particle_status": 0
+      },
+      "canonical_hex": "00020001ff00000100",
+      "consumed_bytes": 9,
+      "payload_bytes": 9
+    },
+    {
+      "name": "information_signed_distance",
+      "direction": "serverbound",
+      "packet_id": 0,
+      "payload_hex": "00800201ff00000102",
+      "ok": true,
+      "result": {
+        "language": "",
+        "view_distance": -128,
+        "chat_visibility": 2,
+        "chat_colors": true,
+        "model_customisation": 255,
+        "main_hand": 0,
+        "text_filtering": false,
+        "allows_listing": true,
+        "particle_status": 2
+      },
+      "canonical_hex": "00800201ff00000102",
+      "consumed_bytes": 9,
+      "payload_bytes": 9
+    },
+    {
+      "name": "information_boolean_nonzero",
+      "direction": "serverbound",
+      "packet_id": 0,
+      "payload_hex": "000200ffff01ff0200",
+      "ok": true,
+      "result": {
+        "language": "",
+        "view_distance": 2,
+        "chat_visibility": 0,
+        "chat_colors": true,
+        "model_customisation": 255,
+        "main_hand": 1,
+        "text_filtering": true,
+        "allows_listing": true,
+        "particle_status": 0
+      },
+      "canonical_hex": "00020001ff01010100",
+      "consumed_bytes": 9,
+      "payload_bytes": 9
+    },
+    {
+      "name": "information_language_16",
+      "direction": "serverbound",
+      "packet_id": 0,
+      "payload_hex": "106162636465666768696a6b6c6d6e6f70020001ff01000100",
+      "ok": true,
+      "result": {
+        "language": "abcdefghijklmnop",
+        "view_distance": 2,
+        "chat_visibility": 0,
+        "chat_colors": true,
+        "model_customisation": 255,
+        "main_hand": 1,
+        "text_filtering": false,
+        "allows_listing": true,
+        "particle_status": 0
+      },
+      "canonical_hex": "106162636465666768696a6b6c6d6e6f70020001ff01000100",
+      "consumed_bytes": 25,
+      "payload_bytes": 25
+    },
+    {
+      "name": "information_language_17",
+      "direction": "serverbound",
+      "packet_id": 0,
+      "payload_hex": "116162636465666768696a6b6c6d6e6f7071020001ff01000100",
+      "ok": false,
+      "error_class": "io.netty.handler.codec.DecoderException",
+      "consumed_bytes": 18,
+      "payload_bytes": 26
+    },
+    {
+      "name": "information_language_8_supplementary",
+      "direction": "serverbound",
+      "packet_id": 0,
+      "payload_hex": "20f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880020001ff01000100",
+      "ok": true,
+      "result": {
+        "language": "😀😀😀😀😀😀😀😀",
+        "view_distance": 2,
+        "chat_visibility": 0,
+        "chat_colors": true,
+        "model_customisation": 255,
+        "main_hand": 1,
+        "text_filtering": false,
+        "allows_listing": true,
+        "particle_status": 0
+      },
+      "canonical_hex": "20f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880020001ff01000100",
+      "consumed_bytes": 41,
+      "payload_bytes": 41
+    },
+    {
+      "name": "information_language_9_supplementary",
+      "direction": "serverbound",
+      "packet_id": 0,
+      "payload_hex": "24f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880f09f9880020001ff01000100",
+      "ok": false,
+      "error_class": "io.netty.handler.codec.DecoderException",
+      "consumed_bytes": 37,
+      "payload_bytes": 45
+    },
+    {
+      "name": "information_malformed_utf8",
+      "direction": "serverbound",
+      "packet_id": 0,
+      "payload_hex": "01ff020001ff01000100",
+      "ok": true,
+      "result": {
+        "language": "�",
+        "view_distance": 2,
+        "chat_visibility": 0,
+        "chat_colors": true,
+        "model_customisation": 255,
+        "main_hand": 1,
+        "text_filtering": false,
+        "allows_listing": true,
+        "particle_status": 0
+      },
+      "canonical_hex": "03efbfbd020001ff01000100",
+      "consumed_bytes": 10,
+      "payload_bytes": 10
+    },
+    {
+      "name": "information_truncated",
+      "direction": "serverbound",
+      "packet_id": 0,
+      "payload_hex": "00020001ff010001",
+      "ok": false,
+      "error_class": "java.lang.IndexOutOfBoundsException",
+      "consumed_bytes": 8,
+      "payload_bytes": 8
+    },
+    {
+      "name": "information_oversized_varint",
+      "direction": "serverbound",
+      "packet_id": 0,
+      "payload_hex": "00028080808080000000000000",
+      "ok": false,
+      "error_class": "java.lang.RuntimeException",
+      "consumed_bytes": 8,
+      "payload_bytes": 13
+    },
+    {
+      "name": "information_outer_trailing",
+      "direction": "serverbound",
+      "packet_id": 0,
+      "payload_hex": "00020001ff0100010055",
+      "ok": true,
+      "result": {
+        "language": "",
+        "view_distance": 2,
+        "chat_visibility": 0,
+        "chat_colors": true,
+        "model_customisation": 255,
+        "main_hand": 1,
+        "text_filtering": false,
+        "allows_listing": true,
+        "particle_status": 0
+      },
+      "canonical_hex": "00020001ff01000100",
+      "consumed_bytes": 9,
+      "payload_bytes": 10
+    },
+    {
+      "name": "known_packs_empty",
+      "direction": "serverbound",
+      "packet_id": 7,
+      "payload_hex": "00",
+      "ok": true,
+      "result": {
+        "known_packs": []
+      },
+      "canonical_hex": "00",
+      "consumed_bytes": 1,
+      "payload_bytes": 1
+    },
+    {
+      "name": "known_packs_one",
+      "direction": "serverbound",
+      "packet_id": 7,
+      "payload_hex": "010474657374047061636b027631",
+      "ok": true,
+      "result": {
+        "known_packs": [
+          {
+            "namespace": "test",
+            "id": "pack",
+            "version": "v1"
+          }
+        ]
+      },
+      "canonical_hex": "010474657374047061636b027631",
+      "consumed_bytes": 14,
+      "payload_bytes": 14
+    },
+    {
+      "name": "known_packs_64",
+      "direction": "serverbound",
+      "packet_id": 7,
+      "payload_prefix_hex": "40",
+      "payload_repeat_hex": "000000",
+      "payload_repeat_count": 64,
+      "payload_suffix_hex": "",
+      "ok": true,
+      "result": {
+        "known_packs": [
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          },
+          {
+            "namespace": "",
+            "id": "",
+            "version": ""
+          }
+        ]
+      },
+      "canonical_hex": "40000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "consumed_bytes": 193,
+      "payload_bytes": 193
+    },
+    {
+      "name": "known_packs_65",
+      "direction": "serverbound",
+      "packet_id": 7,
+      "payload_hex": "41",
+      "ok": false,
+      "error_class": "io.netty.handler.codec.DecoderException",
+      "consumed_bytes": 1,
+      "payload_bytes": 1
+    },
+    {
+      "name": "known_packs_negative",
+      "direction": "serverbound",
+      "packet_id": 7,
+      "payload_hex": "ffffffff0f",
+      "ok": false,
+      "error_class": "java.lang.IllegalArgumentException",
+      "consumed_bytes": 5,
+      "payload_bytes": 5
+    },
+    {
+      "name": "known_packs_truncated",
+      "direction": "serverbound",
+      "packet_id": 7,
+      "payload_hex": "010000",
+      "ok": false,
+      "error_class": "java.lang.IndexOutOfBoundsException",
+      "consumed_bytes": 3,
+      "payload_bytes": 3
+    },
+    {
+      "name": "brand_normal",
+      "direction": "serverbound",
+      "packet_id": 2,
+      "payload_hex": "0f6d696e6563726166743a6272616e640c6172726f772d6f7261636c65",
+      "ok": true,
+      "result": {
+        "channel": "minecraft:brand",
+        "kind": "brand",
+        "brand": "arrow-oracle",
+        "brand_utf16_length": 12
+      },
+      "canonical_hex": "0f6d696e6563726166743a6272616e640c6172726f772d6f7261636c65",
+      "consumed_bytes": 29,
+      "payload_bytes": 29
+    },
+    {
+      "name": "brand_default_namespace",
+      "direction": "serverbound",
+      "packet_id": 2,
+      "payload_hex": "056272616e6400",
+      "ok": true,
+      "result": {
+        "channel": "minecraft:brand",
+        "kind": "brand",
+        "brand": "",
+        "brand_utf16_length": 0
+      },
+      "canonical_hex": "0f6d696e6563726166743a6272616e6400",
+      "consumed_bytes": 7,
+      "payload_bytes": 7
+    },
+    {
+      "name": "brand_outer_trailing",
+      "direction": "serverbound",
+      "packet_id": 2,
+      "payload_hex": "0f6d696e6563726166743a6272616e640161ff",
+      "ok": true,
+      "result": {
+        "channel": "minecraft:brand",
+        "kind": "brand",
+        "brand": "a",
+        "brand_utf16_length": 1
+      },
+      "canonical_hex": "0f6d696e6563726166743a6272616e640161",
+      "consumed_bytes": 18,
+      "payload_bytes": 19
+    },
+    {
+      "name": "brand_string_over_limit",
+      "direction": "serverbound",
+      "packet_id": 2,
+      "payload_hex": "0f6d696e6563726166743a6272616e64feff05",
+      "ok": false,
+      "error_class": "io.netty.handler.codec.DecoderException",
+      "consumed_bytes": 19,
+      "payload_bytes": 19
+    },
+    {
+      "name": "brand_above_unknown_byte_limit",
+      "direction": "serverbound",
+      "packet_id": 2,
+      "payload_prefix_hex": "0f6d696e6563726166743a6272616e64e88102",
+      "payload_repeat_hex": "e282ac",
+      "payload_repeat_count": 11000,
+      "payload_suffix_hex": "",
+      "ok": true,
+      "result": {
+        "channel": "minecraft:brand",
+        "kind": "brand",
+        "brand_utf16_length": 11000
+      },
+      "canonical_same_as_payload": true,
+      "consumed_bytes": 33019,
+      "payload_bytes": 33019
+    },
+    {
+      "name": "custom_invalid_identifier",
+      "direction": "serverbound",
+      "packet_id": 2,
+      "payload_hex": "06546573743a78",
+      "ok": false,
+      "error_class": "net.minecraft.IdentifierException",
+      "consumed_bytes": 7,
+      "payload_bytes": 7
+    },
+    {
+      "name": "custom_unknown_empty",
+      "direction": "serverbound",
+      "packet_id": 2,
+      "payload_hex": "0c746573743a756e6b6e6f776e",
+      "ok": true,
+      "result": {
+        "channel": "test:unknown",
+        "kind": "discarded"
+      },
+      "canonical_hex": "0c746573743a756e6b6e6f776e",
+      "consumed_bytes": 13,
+      "payload_bytes": 13
+    },
+    {
+      "name": "custom_unknown_discards",
+      "direction": "serverbound",
+      "packet_id": 2,
+      "payload_hex": "0c746573743a756e6b6e6f776eaabbcc",
+      "ok": true,
+      "result": {
+        "channel": "test:unknown",
+        "kind": "discarded"
+      },
+      "canonical_hex": "0c746573743a756e6b6e6f776e",
+      "consumed_bytes": 16,
+      "payload_bytes": 16
+    },
+    {
+      "name": "custom_unknown_32767",
+      "direction": "serverbound",
+      "packet_id": 2,
+      "payload_prefix_hex": "0c746573743a756e6b6e6f776e",
+      "payload_repeat_hex": "00",
+      "payload_repeat_count": 32767,
+      "payload_suffix_hex": "",
+      "ok": true,
+      "result": {
+        "channel": "test:unknown",
+        "kind": "discarded"
+      },
+      "canonical_hex": "0c746573743a756e6b6e6f776e",
+      "consumed_bytes": 32780,
+      "payload_bytes": 32780
+    },
+    {
+      "name": "custom_unknown_32768",
+      "direction": "serverbound",
+      "packet_id": 2,
+      "payload_prefix_hex": "0c746573743a756e6b6e6f776e",
+      "payload_repeat_hex": "00",
+      "payload_repeat_count": 32768,
+      "payload_suffix_hex": "",
+      "ok": false,
+      "error_class": "java.lang.IllegalArgumentException",
+      "consumed_bytes": 13,
+      "payload_bytes": 32781
+    },
+    {
+      "name": "cookie_absent",
+      "direction": "serverbound",
+      "packet_id": 1,
+      "payload_hex": "0b746573743a636f6f6b696500",
+      "ok": true,
+      "result": {
+        "key": "test:cookie",
+        "present": false
+      },
+      "canonical_hex": "0b746573743a636f6f6b696500",
+      "consumed_bytes": 13,
+      "payload_bytes": 13
+    },
+    {
+      "name": "cookie_present_empty",
+      "direction": "serverbound",
+      "packet_id": 1,
+      "payload_hex": "0b746573743a636f6f6b69650100",
+      "ok": true,
+      "result": {
+        "key": "test:cookie",
+        "present": true,
+        "payload_bytes": 0,
+        "data_hex": ""
+      },
+      "canonical_hex": "0b746573743a636f6f6b69650100",
+      "consumed_bytes": 14,
+      "payload_bytes": 14
+    },
+    {
+      "name": "cookie_nonzero_presence",
+      "direction": "serverbound",
+      "packet_id": 1,
+      "payload_hex": "0b746573743a636f6f6b6965ff02aabb",
+      "ok": true,
+      "result": {
+        "key": "test:cookie",
+        "present": true,
+        "payload_bytes": 2,
+        "data_hex": "aabb"
+      },
+      "canonical_hex": "0b746573743a636f6f6b69650102aabb",
+      "consumed_bytes": 16,
+      "payload_bytes": 16
+    },
+    {
+      "name": "cookie_maximum",
+      "direction": "serverbound",
+      "packet_id": 1,
+      "payload_prefix_hex": "0b746573743a636f6f6b6965018028",
+      "payload_repeat_hex": "00",
+      "payload_repeat_count": 5120,
+      "payload_suffix_hex": "",
+      "ok": true,
+      "result": {
+        "key": "test:cookie",
+        "present": true,
+        "payload_bytes": 5120
+      },
+      "canonical_same_as_payload": true,
+      "consumed_bytes": 5135,
+      "payload_bytes": 5135
+    },
+    {
+      "name": "cookie_over_limit",
+      "direction": "serverbound",
+      "packet_id": 1,
+      "payload_hex": "0b746573743a636f6f6b6965018128",
+      "ok": false,
+      "error_class": "io.netty.handler.codec.DecoderException",
+      "consumed_bytes": 15,
+      "payload_bytes": 15
+    },
+    {
+      "name": "cookie_negative_length",
+      "direction": "serverbound",
+      "packet_id": 1,
+      "payload_hex": "0b746573743a636f6f6b696501ffffffff0f",
+      "ok": false,
+      "error_class": "java.lang.NegativeArraySizeException",
+      "consumed_bytes": 18,
+      "payload_bytes": 18
+    },
+    {
+      "name": "cookie_truncated",
+      "direction": "serverbound",
+      "packet_id": 1,
+      "payload_hex": "0b746573743a636f6f6b69650102aa",
+      "ok": false,
+      "error_class": "java.lang.IndexOutOfBoundsException",
+      "consumed_bytes": 14,
+      "payload_bytes": 15
+    },
+    {
+      "name": "keep_alive_0000000000000000",
+      "direction": "serverbound",
+      "packet_id": 4,
+      "payload_hex": "0000000000000000",
+      "ok": true,
+      "result": {
+        "id": "0"
+      },
+      "canonical_hex": "0000000000000000",
+      "consumed_bytes": 8,
+      "payload_bytes": 8
+    },
+    {
+      "name": "keep_alive_8000000000000000",
+      "direction": "serverbound",
+      "packet_id": 4,
+      "payload_hex": "8000000000000000",
+      "ok": true,
+      "result": {
+        "id": "-9223372036854775808"
+      },
+      "canonical_hex": "8000000000000000",
+      "consumed_bytes": 8,
+      "payload_bytes": 8
+    },
+    {
+      "name": "keep_alive_0102030405060708",
+      "direction": "serverbound",
+      "packet_id": 4,
+      "payload_hex": "0102030405060708",
+      "ok": true,
+      "result": {
+        "id": "72623859790382856"
+      },
+      "canonical_hex": "0102030405060708",
+      "consumed_bytes": 8,
+      "payload_bytes": 8
+    },
+    {
+      "name": "keep_alive_00000000000000",
+      "direction": "serverbound",
+      "packet_id": 4,
+      "payload_hex": "00000000000000",
+      "ok": false,
+      "error_class": "java.lang.IndexOutOfBoundsException",
+      "consumed_bytes": 0,
+      "payload_bytes": 7
+    },
+    {
+      "name": "pong_80000000",
+      "direction": "serverbound",
+      "packet_id": 5,
+      "payload_hex": "80000000",
+      "ok": true,
+      "result": {
+        "id": "-2147483648"
+      },
+      "canonical_hex": "80000000",
+      "consumed_bytes": 4,
+      "payload_bytes": 4
+    },
+    {
+      "name": "pong_01020304",
+      "direction": "serverbound",
+      "packet_id": 5,
+      "payload_hex": "01020304",
+      "ok": true,
+      "result": {
+        "id": "16909060"
+      },
+      "canonical_hex": "01020304",
+      "consumed_bytes": 4,
+      "payload_bytes": 4
+    },
+    {
+      "name": "pong_000000",
+      "direction": "serverbound",
+      "packet_id": 5,
+      "payload_hex": "000000",
+      "ok": false,
+      "error_class": "java.lang.IndexOutOfBoundsException",
+      "consumed_bytes": 0,
+      "payload_bytes": 3
+    },
+    {
+      "name": "resource_pack_action_0",
+      "direction": "serverbound",
+      "packet_id": 6,
+      "payload_hex": "00112233445566778899aabbccddeeff00",
+      "ok": true,
+      "result": {
+        "uuid": "00112233-4455-6677-8899-aabbccddeeff",
+        "action": 0,
+        "terminal": true
+      },
+      "canonical_hex": "00112233445566778899aabbccddeeff00",
+      "consumed_bytes": 17,
+      "payload_bytes": 17
+    },
+    {
+      "name": "resource_pack_action_3",
+      "direction": "serverbound",
+      "packet_id": 6,
+      "payload_hex": "00112233445566778899aabbccddeeff03",
+      "ok": true,
+      "result": {
+        "uuid": "00112233-4455-6677-8899-aabbccddeeff",
+        "action": 3,
+        "terminal": false
+      },
+      "canonical_hex": "00112233445566778899aabbccddeeff03",
+      "consumed_bytes": 17,
+      "payload_bytes": 17
+    },
+    {
+      "name": "resource_pack_action_4",
+      "direction": "serverbound",
+      "packet_id": 6,
+      "payload_hex": "00112233445566778899aabbccddeeff04",
+      "ok": true,
+      "result": {
+        "uuid": "00112233-4455-6677-8899-aabbccddeeff",
+        "action": 4,
+        "terminal": false
+      },
+      "canonical_hex": "00112233445566778899aabbccddeeff04",
+      "consumed_bytes": 17,
+      "payload_bytes": 17
+    },
+    {
+      "name": "resource_pack_action_7",
+      "direction": "serverbound",
+      "packet_id": 6,
+      "payload_hex": "00112233445566778899aabbccddeeff07",
+      "ok": true,
+      "result": {
+        "uuid": "00112233-4455-6677-8899-aabbccddeeff",
+        "action": 7,
+        "terminal": true
+      },
+      "canonical_hex": "00112233445566778899aabbccddeeff07",
+      "consumed_bytes": 17,
+      "payload_bytes": 17
+    },
+    {
+      "name": "resource_pack_action_8",
+      "direction": "serverbound",
+      "packet_id": 6,
+      "payload_hex": "00112233445566778899aabbccddeeff08",
+      "ok": false,
+      "error_class": "java.lang.ArrayIndexOutOfBoundsException",
+      "consumed_bytes": 17,
+      "payload_bytes": 17
+    },
+    {
+      "name": "resource_pack_action_-1",
+      "direction": "serverbound",
+      "packet_id": 6,
+      "payload_hex": "00112233445566778899aabbccddeeffffffffff0f",
+      "ok": false,
+      "error_class": "java.lang.ArrayIndexOutOfBoundsException",
+      "consumed_bytes": 21,
+      "payload_bytes": 21
+    },
+    {
+      "name": "custom_click_absent",
+      "direction": "serverbound",
+      "packet_id": 8,
+      "payload_hex": "0a746573743a636c69636b0100",
+      "ok": true,
+      "result": {
+        "id": "test:click",
+        "present": false
+      },
+      "canonical_hex": "0a746573743a636c69636b0100",
+      "consumed_bytes": 13,
+      "payload_bytes": 13
+    },
+    {
+      "name": "custom_click_byte",
+      "direction": "serverbound",
+      "packet_id": 8,
+      "payload_hex": "0a746573743a636c69636b02017f",
+      "ok": true,
+      "result": {
+        "id": "test:click",
+        "present": true,
+        "tag_id": 1,
+        "snbt": "127b"
+      },
+      "canonical_hex": "0a746573743a636c69636b02017f",
+      "consumed_bytes": 14,
+      "payload_bytes": 14
+    },
+    {
+      "name": "custom_click_empty_compound",
+      "direction": "serverbound",
+      "packet_id": 8,
+      "payload_hex": "0a746573743a636c69636b020a00",
+      "ok": true,
+      "result": {
+        "id": "test:click",
+        "present": true,
+        "tag_id": 10,
+        "snbt": "{}"
+      },
+      "canonical_hex": "0a746573743a636c69636b020a00",
+      "consumed_bytes": 14,
+      "payload_bytes": 14
+    },
+    {
+      "name": "custom_click_inner_trailing",
+      "direction": "serverbound",
+      "packet_id": 8,
+      "payload_hex": "0a746573743a636c69636b020055",
+      "ok": true,
+      "result": {
+        "id": "test:click",
+        "present": false
+      },
+      "canonical_hex": "0a746573743a636c69636b0100",
+      "consumed_bytes": 14,
+      "payload_bytes": 14
+    },
+    {
+      "name": "custom_click_outer_trailing",
+      "direction": "serverbound",
+      "packet_id": 8,
+      "payload_hex": "0a746573743a636c69636b010055",
+      "ok": true,
+      "result": {
+        "id": "test:click",
+        "present": false
+      },
+      "canonical_hex": "0a746573743a636c69636b0100",
+      "consumed_bytes": 13,
+      "payload_bytes": 14
+    },
+    {
+      "name": "custom_click_empty_slice",
+      "direction": "serverbound",
+      "packet_id": 8,
+      "payload_hex": "0a746573743a636c69636b00",
+      "ok": false,
+      "error_class": "io.netty.handler.codec.EncoderException",
+      "consumed_bytes": 12,
+      "payload_bytes": 12
+    },
+    {
+      "name": "custom_click_truncated_slice",
+      "direction": "serverbound",
+      "packet_id": 8,
+      "payload_hex": "0a746573743a636c69636b0200",
+      "ok": false,
+      "error_class": "java.lang.IndexOutOfBoundsException",
+      "consumed_bytes": 12,
+      "payload_bytes": 13
+    },
+    {
+      "name": "custom_click_invalid_tag",
+      "direction": "serverbound",
+      "packet_id": 8,
+      "payload_hex": "0a746573743a636c69636b017f",
+      "ok": false,
+      "error_class": "net.minecraft.nbt.ReportedNbtException",
+      "consumed_bytes": 13,
+      "payload_bytes": 13
+    },
+    {
+      "name": "custom_click_length_over_limit",
+      "direction": "serverbound",
+      "packet_id": 8,
+      "payload_hex": "0a746573743a636c69636b818004",
+      "ok": false,
+      "error_class": "io.netty.handler.codec.DecoderException",
+      "consumed_bytes": 14,
+      "payload_bytes": 14
+    },
+    {
+      "name": "custom_click_depth_15",
+      "direction": "serverbound",
+      "packet_id": 8,
+      "payload_hex": "0a746573743a636c69636b3e0a0a00000a00000a00000a00000a00000a00000a00000a00000a00000a00000a00000a00000a00000a00000a000000000000000000000000000000000000",
+      "ok": true,
+      "result": {
+        "id": "test:click",
+        "present": true,
+        "tag_id": 10,
+        "snbt": "{\"\":{\"\":{\"\":{\"\":{\"\":{\"\":{\"\":{\"\":{\"\":{\"\":{\"\":{\"\":{\"\":{\"\":{\"\":{}}}}}}}}}}}}}}}}"
+      },
+      "canonical_hex": "0a746573743a636c69636b3e0a0a00000a00000a00000a00000a00000a00000a00000a00000a00000a00000a00000a00000a00000a00000a000000000000000000000000000000000000",
+      "consumed_bytes": 74,
+      "payload_bytes": 74
+    },
+    {
+      "name": "custom_click_depth_16",
+      "direction": "serverbound",
+      "packet_id": 8,
+      "payload_hex": "0a746573743a636c69636b420a0a00000a00000a00000a00000a00000a00000a00000a00000a00000a00000a00000a00000a00000a00000a00000a00000000000000000000000000000000000000",
+      "ok": false,
+      "error_class": "net.minecraft.nbt.NbtAccounterException",
+      "consumed_bytes": 78,
+      "payload_bytes": 78
+    },
+    {
+      "name": "custom_click_byte_array_32744",
+      "direction": "serverbound",
+      "packet_id": 8,
+      "payload_prefix_hex": "0a746573743a636c69636bedff010700007fe8",
+      "payload_repeat_hex": "00",
+      "payload_repeat_count": 32744,
+      "payload_suffix_hex": "",
+      "ok": true,
+      "result": {
+        "id": "test:click",
+        "present": true,
+        "tag_id": 7,
+        "byte_array_length": 32744
+      },
+      "canonical_same_as_payload": true,
+      "consumed_bytes": 32763,
+      "payload_bytes": 32763
+    },
+    {
+      "name": "custom_click_byte_array_32745",
+      "direction": "serverbound",
+      "packet_id": 8,
+      "payload_prefix_hex": "0a746573743a636c69636beeff010700007fe9",
+      "payload_repeat_hex": "00",
+      "payload_repeat_count": 32745,
+      "payload_suffix_hex": "",
+      "ok": false,
+      "error_class": "net.minecraft.nbt.NbtAccounterException",
+      "consumed_bytes": 32764,
+      "payload_bytes": 32764
+    },
+    {
+      "name": "finish_empty",
+      "direction": "serverbound",
+      "packet_id": 3,
+      "payload_hex": "",
+      "ok": true,
+      "result": {},
+      "canonical_hex": "",
+      "consumed_bytes": 0,
+      "payload_bytes": 0
+    },
+    {
+      "name": "finish_outer_trailing",
+      "direction": "serverbound",
+      "packet_id": 3,
+      "payload_hex": "01",
+      "ok": true,
+      "result": {},
+      "canonical_hex": "",
+      "consumed_bytes": 0,
+      "payload_bytes": 1
+    },
+    {
+      "name": "conduct_empty",
+      "direction": "serverbound",
+      "packet_id": 9,
+      "payload_hex": "",
+      "ok": true,
+      "result": {},
+      "canonical_hex": "",
+      "consumed_bytes": 0,
+      "payload_bytes": 0
+    },
+    {
+      "name": "conduct_outer_trailing",
+      "direction": "serverbound",
+      "packet_id": 9,
+      "payload_hex": "01",
+      "ok": true,
+      "result": {},
+      "canonical_hex": "",
+      "consumed_bytes": 0,
+      "payload_bytes": 1
+    },
+    {
+      "name": "clientbound_brand",
+      "direction": "clientbound",
+      "packet_id": 1,
+      "payload_hex": "0f6d696e6563726166743a6272616e640c6172726f772d6f7261636c65",
+      "ok": true,
+      "result": {
+        "channel": "minecraft:brand",
+        "kind": "brand",
+        "brand": "arrow-oracle",
+        "brand_utf16_length": 12
+      },
+      "canonical_hex": "0f6d696e6563726166743a6272616e640c6172726f772d6f7261636c65",
+      "consumed_bytes": 29,
+      "payload_bytes": 29
+    },
+    {
+      "name": "clientbound_features",
+      "direction": "clientbound",
+      "packet_id": 13,
+      "payload_hex": "010c746573743a66656174757265",
+      "ok": true,
+      "result": {
+        "feature": "test:feature"
+      },
+      "canonical_hex": "010c746573743a66656174757265",
+      "consumed_bytes": 14,
+      "payload_bytes": 14
+    },
+    {
+      "name": "clientbound_known_packs",
+      "direction": "clientbound",
+      "packet_id": 15,
+      "payload_hex": "010474657374047061636b027631",
+      "ok": true,
+      "result": {
+        "known_packs": [
+          {
+            "namespace": "test",
+            "id": "pack",
+            "version": "v1"
+          }
+        ]
+      },
+      "canonical_hex": "010474657374047061636b027631",
+      "consumed_bytes": 14,
+      "payload_bytes": 14
+    },
+    {
+      "name": "clientbound_registry",
+      "direction": "clientbound",
+      "packet_id": 7,
+      "payload_hex": "0d746573743a7265676973747279020c746573743a70726573656e74010a030006616e737765720000002a000c746573743a6f6d697474656400",
+      "ok": true,
+      "result": {
+        "registry": "test:registry",
+        "entries": [
+          {
+            "id": "test:present",
+            "present": true,
+            "snbt": "{answer:42}"
+          },
+          {
+            "id": "test:omitted",
+            "present": false
+          }
+        ]
+      },
+      "canonical_hex": "0d746573743a7265676973747279020c746573743a70726573656e74010a030006616e737765720000002a000c746573743a6f6d697474656400",
+      "consumed_bytes": 58,
+      "payload_bytes": 58
+    },
+    {
+      "name": "clientbound_tags",
+      "direction": "clientbound",
+      "packet_id": 14,
+      "payload_hex": "010d746573743a72656769737472790108746573743a7461670300028001",
+      "ok": true,
+      "result": {
+        "registry": "test:registry",
+        "tag": "test:tag",
+        "ids": [
+          0,
+          2,
+          128
+        ]
+      },
+      "canonical_hex": "010d746573743a72656769737472790108746573743a7461670300028001",
+      "consumed_bytes": 30,
+      "payload_bytes": 30
+    },
+    {
+      "name": "clientbound_disconnect",
+      "direction": "clientbound",
+      "packet_id": 2,
+      "payload_hex": "08000f6f7261636c6520636f6d706c657465",
+      "ok": true,
+      "result": {
+        "text": "oracle complete"
+      },
+      "canonical_hex": "08000f6f7261636c6520636f6d706c657465",
+      "consumed_bytes": 18,
+      "payload_bytes": 18
+    },
+    {
+      "name": "clientbound_finish",
+      "direction": "clientbound",
+      "packet_id": 3,
+      "payload_hex": "",
+      "ok": true,
+      "result": {},
+      "canonical_hex": "",
+      "consumed_bytes": 0,
+      "payload_bytes": 0
+    }
+  ],
+  "source_jar_sha256": "18d6ad2986227ea55eb18f8ee6929999a4c48c0bbd623c36af3d2f64d3180e4a",
+  "oracle_source_sha256": "b9c72816c2a2a36d8a40c0772dfe577167a78f38e016032bca20e0dfe3ea520a"
+}

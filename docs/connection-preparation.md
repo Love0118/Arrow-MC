@@ -1,8 +1,8 @@
 # 접속 데이터와 병렬 section 결과 준비
 
 고정 기준은 `26.3-pre-2`, protocol `1073742158`이다. 이 구현은 현재 status 서버 다음에 필요한
-압축·configuration 데이터와 section 결과 수명 관리를 제공한다. 로그인 인증, configuration session,
-실제 spawn 준비와 Play 전환은 아직 연결하지 않았다. 빈 registry나 가짜 spawn으로 접속 완료를 표시하지 않는다.
+압축·configuration 데이터와 section 결과 수명 관리를 제공한다. 이후 로그인 인증과 configuration session은
+[실제 접속 경로](login-configuration.md)에 연결했다. 실제 spawn 준비와 Play 전환은 아직 미완료다.
 
 ## 패킷 압축
 
@@ -82,4 +82,4 @@ manifest를 포함한 실제 입력은 439개 파일·1,384,869 bytes, 보관하
 Windows x86_64 release 단일 측정의 첫 프로세스 load는 34.135 ms, 같은 프로세스 재호출은 28.100 ms였다.
 OS cache는 통제하지 않았고 cold disk·RSS·동시 접속 benchmark로 해석하지 않는다.
 이는 해당 접속 데이터의 준비·검증 범위다. 전체 typed registry/component/recipe codec과 item 기반 완성을 뜻하지 않는다.
-실제 접속은 인증·프로토콜 전환·클라이언트 응답·spawn 주변 청크 준비 조건을 함께 구현한 뒤 검증한다.
+인증·프로토콜 전환·클라이언트 응답·registry/tag 전송을 별도 TCP 경로에서 검증했고, spawn 주변 청크 준비 조건은 남아 있다.

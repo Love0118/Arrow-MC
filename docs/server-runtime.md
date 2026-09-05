@@ -1,7 +1,7 @@
 # 서버 실행·청크 section·병렬 준비
 
-현재 범위는 실제 Java status/ping 서버와 청크 section 데이터 처리다. 인증·configuration/play 접속,
-월드 생성·조명·청크 ticket/load 전체·게임 tick 실행은 후속 작업이다.
+이 문서는 status/ping 서버와 청크 section 기반의 상세 경계를 기록한다. 추가한 인증·configuration과 예약 tick은
+[로그인 구현 문서](login-configuration.md)에 있다. Play·월드 생성·조명·청크 ticket/load 전체·게임 tick 실행은 후속 작업이다.
 아이템의 NBT/component 선행 조건을 서버 전체의 대기 조건으로 확대하지 않고 이 경로들을 병렬 개발한다.
 
 ## 실제 TCP 서버
@@ -13,7 +13,8 @@ cargo run --release -- --bind 127.0.0.1 --port 25565 --description "Arrow MC"
 `--help`는 bind/port/description/max-players/max-connections/timeout-seconds/connection-bytes/io-workers를 안내한다.
 표시 버전은 공식 `26.3 Pre-Release 2`, protocol은1073742158이다. 온라인 인원은 실제 구현 범위에 맞게0이다.
 status는 클라이언트 protocol 숫자가 달라도 응답하고, ping-first와 중복 요청 처리도 고정 서버의 순서를 따른다.
-동일 버전 login은 현재 로그인 불가 메시지로 종료하며, 다른 버전과 transfer 요청은 해당 handshake 경로의 진단을 사용한다.
+snapshot 미설정의 동일 버전 login은 로그인 불가 메시지로 종료한다. 검증된 서비스를 설정하면 실제 로그인으로 이어지고,
+다른 버전과 transfer 요청은 해당 handshake 경로의 진단을 사용한다.
 
 연결마다 하나의 async task가 socket 읽기·쓰기를 소유한다. 프레임 길이는3-byte VarInt, 내부 정수는 별도5-byte VarInt 규칙이다.
 handshake 고정 입력 버퍼787bytes와 다음 상태의 작은 프레임 한계로 입력을 제한한다.
@@ -27,7 +28,7 @@ deadline은 byte마다 초기화하지 않는다. 선언된 프레임과 응답 
 Tokio1.53.1의 net/io-util/time/sync/signal/rt-multi-thread/macros만 사용한다.
 `select!`는 shutdown·accept·task 완료를 명확히 다루기 위해 사용하며 자체 async polling framework를 만들지 않는다.
 serde_json1.0.151로 JSON escape를 처리하고 custom derive 모델을 추가하지 않는다.
-압축과 configuration 데이터 검증을 포함한 Cargo lock은34개 registry package를 모든 플랫폼·선택 의존성까지 잠근다.
+인증·native crypto까지 포함한 현재 Cargo lock은127개 registry package를 모든 플랫폼·선택 의존성까지 잠근다.
 실제 컴파일 subset은 host와 feature에 따라 다르다.
 [원문 라이선스 고지](../third_party/rust/README.md)는 lock hash와 함께 보존한다.
 

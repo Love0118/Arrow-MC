@@ -26,6 +26,22 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare native Windows OpenSSL build tools
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $tools = & ./tools/Prepare-WindowsBuild.ps1
+          "OPENSSL_SRC_PERL=$($tools.Perl)" >> $env:GITHUB_ENV
+          'OPENSSL_RUST_USE_NASM=1' >> $env:GITHUB_ENV
+          $tools.PerlDirectory >> $env:GITHUB_PATH
+          $tools.NasmDirectory >> $env:GITHUB_PATH
+      - name: Verify native Unix OpenSSL build tools
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          cc --version
+          make --version
+          perl -MLocale::Maketext::Simple -e 'print "$^V $^O\n"'
       - name: Install the pinned Rust toolchain
         run: rustup toolchain install 1.96.0 --profile minimal --component rustfmt --component clippy
       - name: Verify native architecture

@@ -33,12 +33,15 @@ fn cli_help_and_invalid_limits_are_explicit() {
     assert!(output.status.success());
     let help = String::from_utf8(output.stdout).unwrap();
     assert!(help.contains("--bind IP"));
-    assert!(help.contains("Login and gameplay are not implemented"));
+    assert!(help.contains("Online authentication is the default"));
+    assert!(help.contains("gameplay is unavailable"));
     for args in [
         vec!["--io-workers", "0"],
         vec!["--max-connections", "0"],
         vec!["--port", "65536"],
         vec!["--unknown", "value"],
+        vec!["--online-mode", "false"],
+        vec!["--configuration-snapshot", "missing"],
     ] {
         let output = command().args(args).output().unwrap();
         assert!(!output.status.success());

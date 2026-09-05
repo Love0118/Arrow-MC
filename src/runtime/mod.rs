@@ -1,4 +1,4 @@
-//! Shared, bounded CPU work for chunk-section network preparation.
+//! Shared, bounded CPU work for sections, packet codecs and login verification.
 //!
 //! One server owns one pool and budgets its workers alongside its I/O runtime.
 //! This prepares immutable section bytes; it does not tick a world or publish
@@ -12,6 +12,12 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread::{self, JoinHandle};
 
 use crate::world::section::{self, Registry, SectionCounts};
+
+mod packet;
+pub use packet::{
+    LOGIN_KEY_JOB_BUFFER_BYTES, LoginKeyJobError, LoginKeyOutput, LoginKeyTask, PendingLoginKey,
+};
+pub use packet::{PacketJobError, PacketJobOutput, PacketOperation, PacketTask, PendingPacket};
 
 pub const SECTION_INPUT_BYTES: usize = (4096 + 64) * size_of::<u32>();
 pub const SECTION_JOB_BUFFER_BYTES: usize =
@@ -78,6 +84,7 @@ pub enum AdmissionError {
     JobLimit,
     ByteLimit,
     AllocationFailed,
+    InvalidInput,
 }
 
 impl fmt::Display for AdmissionError {
@@ -87,6 +94,7 @@ impl fmt::Display for AdmissionError {
             Self::JobLimit => "CPU in-flight job limit reached",
             Self::ByteLimit => "CPU buffer-byte budget exhausted",
             Self::AllocationFailed => "CPU job buffer allocation failed",
+            Self::InvalidInput => "CPU job input or limits are invalid",
         })
     }
 }
@@ -124,9 +132,15 @@ struct Shared {
 }
 
 struct PoolState {
-    queue: VecDeque<PrepareSection>,
+    queue: VecDeque<Job>,
     closed: bool,
     stats: CpuPoolStats,
+}
+
+enum Job {
+    Section(PrepareSection),
+    Packet(packet::PacketJob),
+    VerifyLoginKey(packet::LoginKeyJob),
 }
 
 /// Field order is deliberate: payloads are freed before the lease returns their
@@ -170,6 +184,7 @@ pub struct SectionCompletion {
 
 struct Lease {
     shared: Arc<Shared>,
+    bytes: usize,
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -226,30 +241,8 @@ impl CpuPool {
         biome_registry: Registry,
         counts: SectionCounts,
     ) -> Result<PendingSection, AdmissionError> {
-        {
-            let mut state = lock(&self.shared.state);
-            if state.closed {
-                return Err(AdmissionError::Closed);
-            }
-            if state.stats.in_flight == self.shared.config.max_jobs {
-                return Err(AdmissionError::JobLimit);
-            }
-            if SECTION_JOB_BUFFER_BYTES
-                > self.shared.config.buffer_bytes - state.stats.reserved_buffer_bytes
-            {
-                return Err(AdmissionError::ByteLimit);
-            }
-            state.stats.in_flight += 1;
-            state.stats.reserved_buffer_bytes += SECTION_JOB_BUFFER_BYTES;
-            state.stats.peak_reserved_buffer_bytes = state
-                .stats
-                .peak_reserved_buffer_bytes
-                .max(state.stats.reserved_buffer_bytes);
-        }
         // This local predates both buffers, so error unwinding drops them first.
-        let lease = Lease {
-            shared: Arc::clone(&self.shared),
-        };
+        let lease = self.try_reserve(SECTION_JOB_BUFFER_BYTES)?;
         let mut input = Vec::new();
         input
             .try_reserve_exact(4096 + 64)
@@ -267,6 +260,29 @@ impl CpuPool {
             biome_registry,
             counts,
             lease,
+        })
+    }
+
+    fn try_reserve(&self, bytes: usize) -> Result<Lease, AdmissionError> {
+        let mut state = lock(&self.shared.state);
+        if state.closed {
+            return Err(AdmissionError::Closed);
+        }
+        if state.stats.in_flight == self.shared.config.max_jobs {
+            return Err(AdmissionError::JobLimit);
+        }
+        if bytes > self.shared.config.buffer_bytes - state.stats.reserved_buffer_bytes {
+            return Err(AdmissionError::ByteLimit);
+        }
+        state.stats.in_flight += 1;
+        state.stats.reserved_buffer_bytes += bytes;
+        state.stats.peak_reserved_buffer_bytes = state
+            .stats
+            .peak_reserved_buffer_bytes
+            .max(state.stats.reserved_buffer_bytes);
+        Ok(Lease {
+            shared: Arc::clone(&self.shared),
+            bytes,
         })
     }
 
@@ -309,7 +325,7 @@ impl Drop for Lease {
     fn drop(&mut self) {
         let mut state = lock(&self.shared.state);
         state.stats.in_flight -= 1;
-        state.stats.reserved_buffer_bytes -= SECTION_JOB_BUFFER_BYTES;
+        state.stats.reserved_buffer_bytes -= self.bytes;
     }
 }
 
@@ -358,12 +374,12 @@ impl PendingSection {
             }
             // All-stage admission bounds queue capacity; this cannot grow.
             debug_assert!(state.queue.len() < shared.config.max_jobs);
-            state.queue.push_back(PrepareSection {
+            state.queue.push_back(Job::Section(PrepareSection {
                 pending: self,
                 task,
                 #[cfg(test)]
                 gate,
-            });
+            }));
             state.stats.queued += 1;
         }
         shared.work.notify_one();
@@ -439,6 +455,9 @@ impl SectionCompletion {
 }
 
 fn work(shared: Arc<Shared>) {
+    // Lazily initialized once per worker. Backend state is provisioned worker
+    // overhead, separately bounded by worker count, not a per-connection cache.
+    let mut compression = None;
     loop {
         let job = {
             let mut state = lock(&shared.state);
@@ -458,63 +477,73 @@ fn work(shared: Arc<Shared>) {
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
             }
         };
-        #[cfg(test)]
-        if let Some(gate) = &job.gate {
-            gate.block();
+        match job {
+            Job::Section(job) => run_section(job, &shared),
+            Job::Packet(job) => packet::run(job, &mut compression, &shared),
+            Job::VerifyLoginKey(job) => packet::verify_login_key(job, &shared),
         }
-        let PrepareSection { pending, task, .. } = job;
-        let PendingSection {
-            input,
-            mut output,
-            key,
-            block_registry,
-            biome_registry,
-            counts,
-            lease,
-        } = pending;
-        let outcome = if task.cancelled.load(Ordering::Acquire) {
-            Err(SectionJobError::Cancelled)
-        } else {
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                section::prepare_section(
-                    (&input[..4096]).try_into().unwrap(),
-                    (&input[4096..]).try_into().unwrap(),
-                    block_registry,
-                    biome_registry,
-                    counts,
-                    &mut output,
-                )
-            }))
-            .map_err(|_| SectionJobError::WorkerPanicked)
-            .and_then(|result| result.map_err(SectionJobError::Prepare))
-        };
-        // Release input before handing the still-reserved output to the owner.
-        drop(input);
-        let outcome = if task.cancelled.load(Ordering::Acquire) {
-            drop(output);
-            Err(SectionJobError::Cancelled)
-        } else {
-            match outcome {
-                Ok(()) => Ok(output),
-                Err(error) => {
-                    drop(output);
-                    Err(error)
-                }
-            }
-        };
-        let completion = SectionCompletion {
-            key,
-            outcome,
-            _lease: lease,
-        };
-        {
-            let mut state = lock(&shared.state);
-            state.stats.running -= 1;
-            state.stats.completed_jobs = state.stats.completed_jobs.saturating_add(1);
-        }
-        *lock(&task.ready) = Some(completion);
-        task.changed.notify_one();
     }
+}
+
+fn finish_job(shared: &Shared) {
+    let mut state = lock(&shared.state);
+    state.stats.running -= 1;
+    state.stats.completed_jobs = state.stats.completed_jobs.saturating_add(1);
+}
+
+fn run_section(job: PrepareSection, shared: &Shared) {
+    #[cfg(test)]
+    if let Some(gate) = &job.gate {
+        gate.block();
+    }
+    let PrepareSection { pending, task, .. } = job;
+    let PendingSection {
+        input,
+        mut output,
+        key,
+        block_registry,
+        biome_registry,
+        counts,
+        lease,
+    } = pending;
+    let outcome = if task.cancelled.load(Ordering::Acquire) {
+        Err(SectionJobError::Cancelled)
+    } else {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            section::prepare_section(
+                (&input[..4096]).try_into().unwrap(),
+                (&input[4096..]).try_into().unwrap(),
+                block_registry,
+                biome_registry,
+                counts,
+                &mut output,
+            )
+        }))
+        .map_err(|_| SectionJobError::WorkerPanicked)
+        .and_then(|result| result.map_err(SectionJobError::Prepare))
+    };
+    // Release input before handing the still-reserved output to the owner.
+    drop(input);
+    let outcome = if task.cancelled.load(Ordering::Acquire) {
+        drop(output);
+        Err(SectionJobError::Cancelled)
+    } else {
+        match outcome {
+            Ok(()) => Ok(output),
+            Err(error) => {
+                drop(output);
+                Err(error)
+            }
+        }
+    };
+    let completion = SectionCompletion {
+        key,
+        outcome,
+        _lease: lease,
+    };
+    finish_job(shared);
+    *lock(&task.ready) = Some(completion);
+    task.changed.notify_one();
 }
 
 #[cfg(test)]

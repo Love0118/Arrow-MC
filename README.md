@@ -6,9 +6,9 @@ Java 디컴파일본과 실제 실행 결과를 동작 기준으로 삼고, Pump
 
 현재 단계는 **실행 가능한 서버와 기반 기능 구현 진행 중**입니다. Java 서버 목록의 status/ping에 실제 TCP로 응답합니다.
 청크 section palette/packed storage와 제한된 CPU worker의 병렬 section 준비도 구현했습니다.
-패킷 압축, 변경 revision을 검증하는 section 준비 소유자와 실제 Vanilla configuration 데이터 준비·읽기를 추가했습니다.
-현재 범위와 남은 접속 단계를 [접속 준비 문서](docs/connection-preparation.md)에 기록합니다.
-인증·로그인 완료·플레이·월드 생성·게임 tick은 아직 구현하지 않았습니다.
+검증된 snapshot을 지정하면 online 로그인·암호화·압축과 실제 registry/tag configuration 전송까지 수행합니다.
+block/fluid 예약 tick queue도 구현했습니다. **실제 spawn 준비와 Play·월드 생성·게임 tick 실행은 아직 미완료**입니다.
+현재 실행 방법과 검증 경계는 [로그인·configuration·예약 tick](docs/login-configuration.md)에 기록합니다.
 [설계 기준](docs/architecture.md)과 [Vanilla/Pumpkin 비교·최적화 계획](docs/optimization-plan.md)에 지원 범위,
 동기·비동기 실행 경계, 가져올 최적화와 직접 가져오지 않을 동작을 정리했습니다.
 
@@ -23,7 +23,8 @@ tick 병렬화는 초기에 단일 스레드 대조 경로와 함께 개발할 �
 ## Rust 기반 개발
 
 Rust `1.96.0`, 단일 package의 library와 서버 실행 파일을 사용합니다.
-네트워크에는 필요한 기능만 켠 Tokio, 상태 JSON에는 serde_json을 사용하며 버전과 [의존성 고지](THIRD_PARTY_NOTICES.md)를 고정합니다.
+네트워크에는 필요한 기능만 켠 Tokio, 인증에는 최소 기능 reqwest, protocol crypto에는 OpenSSL을 사용합니다.
+버전과 embedded native 코드를 포함한 [의존성 고지](THIRD_PARTY_NOTICES.md)를 고정합니다.
 NBT·wire·section kernel·CPU pool 자체에는 추가 외부 framework를 도입하지 않았습니다.
 `src/nbt`는 모든 binary tag·Java modified UTF-8·mixed list·named/network root·자원 제한을 처리합니다.
 `src/snbt`는 현대 SNBT parser·compact/pretty writer와 UTF-16 진단을 처리합니다. [범위·자원 정책·대조 근거](docs/snbt.md)를 별도로 기록합니다.
@@ -49,7 +50,8 @@ CI는 네 native target에서 foundation debug/release 테스트를 실행합니
 cargo run --release -- --bind 127.0.0.1 --port 25565
 ```
 
-Java 서버 목록에서 상태·설명·ping을 확인할 수 있습니다. 로그인은 미구현임을 표시하는 disconnect를 반환합니다.
+Java 서버 목록에서 상태·설명·ping을 확인할 수 있습니다. 위 명령은 snapshot 미설정이므로 로그인은 종료합니다.
+검증된 snapshot·별도 manifest hash를 지정하는 [로그인 실행 방법](docs/login-configuration.md)을 사용하면 configuration까지 진행합니다.
 연결별 읽기·쓰기 순서, 연결 수, 프레임 크기, 전체 교환 시간과 통신량을 제한하며 종료 시 task/socket을 회수합니다.
 기본 I/O worker는 최대2개입니다. [실행·청크·worker 범위](docs/server-runtime.md)에서 설정과 검증 경계를 확인할 수 있습니다.
 

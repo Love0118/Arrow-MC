@@ -3,10 +3,14 @@
 ## Rust runtime dependencies
 
 The server uses pinned Tokio and serde_json packages, flate2 with the zlib-rs
-backend for protocol compression, and sha2 for local snapshot integrity checks. Their resolved
+backend for protocol compression, and sha2 for local snapshot integrity checks.
+It also uses OpenSSL for protocol crypto, minimal native-TLS reqwest for session
+verification, and serde for bounded typed authentication responses. The resolved
 dependencies have individual notices in [third_party/rust/README.md](third_party/rust/README.md).
 The collector retains the original license/copyright files and records their
 hashes against Cargo.lock, including packages for other supported platforms.
+Audited nested notices include the linked OpenSSL sources inside openssl-src,
+its Text::Template build tool, and the spin implementation inside tracing-core.
 Include the applicable notices when distributing binaries containing this code.
 
 ## Unicode data

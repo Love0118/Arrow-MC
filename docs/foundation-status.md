@@ -5,10 +5,11 @@
 ## 현재 실행 경로
 
 실제 Java status/ping 서버, section palette/packed storage, 고정 worker의 병렬 section 준비를 구현했다.
-이번 묶음은 packet compression·section 변경/완료 소유자·실제 configuration snapshot 준비와 검증을 추가했다.
+packet compression·section 변경/완료 소유자·실제 configuration snapshot 준비와 검증을 추가했다.
 [접속 준비 범위](connection-preparation.md)에 구현·자원·남은 통합 경계를 기록했다.
-[실행과 자원 경계](server-runtime.md)에 사용 방법과 현재 제한을 기록했다. 로그인 완료·플레이·월드 생성·게임 tick은 남아 있다.
-현재 로컬 전체 debug/release235개가 통과했고, Clippy·format을 통과했다. 선택 검증9개는 기본 실행에서 제외한다.
+[로그인·configuration·예약 tick](login-configuration.md)에는 이번 실제 접속 경로와 실행 방법이 있다.
+로그인 인증부터 configuration까지 연결했고, Play·spawn·월드 생성·게임 tick 실행은 남아 있다.
+현재 로컬 전체 debug/release332개가 통과했고, Clippy·format을 통과했다. 선택 검증16개는 기본 실행에서 제외한다.
 서버 실제 TCP/CLI12개·section18개·runtime13개와 독립 검수, 공식 codec/UTF-8/section 대조를 포함한다.
 
 commit `7a3e90e`의 [CI run33953216241](https://github.com/Love0118/Arrow-MC/actions/runs/33953216241)에서 네 native 플랫폼
@@ -16,10 +17,34 @@ commit `7a3e90e`의 [CI run33953216241](https://github.com/Love0118/Arrow-MC/act
 lock 기반 의존성 고지 검사도 성공했다. 최초 `d86860f`는 Unix CLI helper의 불필요한 `mut` lint로 실패했고,
 Windows 전용 scope로 수정해 재검증했다. 실행·section 병렬 준비의 성공이며 로그인·게임플레이 완성은 아니다.
 
-Tokio1.53.1·serde_json1.0.151·flate2 1.1.10(zlib-rs)·sha2 0.10.9를 고정하며 단일 package의 library+binary를 유지한다.
-네트워크 대기와 종료 조율에 필요한 Tokio 기능만 사용하고 CPU section 작업은 별도 고정 pool로 수행한다.
-모든 lock package34개의 [원문 의존성 고지](../third_party/rust/README.md)를 수집·검사했다.
+Tokio1.53.1·serde_json1.0.151·flate2 1.1.10(zlib-rs)·sha2 0.10.9와 OpenSSL0.10.81·reqwest0.13.4·serde1.0.228을 고정한다.
+단일 package의 library+binary를 유지하고 section·compression·큰 cipher body·RSA가 같은 고정 pool을 공유한다.
+모든 lock package127개의 [원문 의존성 고지](../third_party/rust/README.md)를 수집·검사했다.
 이전의 외부 의존성0개는 아래 초기 데이터 기반 snapshot에 해당하며 현재 서버 package 전체의 수치가 아니다.
+
+## 실제 로그인·configuration·예약 tick 추가
+
+로그인·configuration·crypto/auth·공유 CPU·예약 tick·입장 정책·native 도구의 구현 역할과 정확성/최적화 독립 리뷰2역할로 진행했다.
+public Server를 실제 TCP로 구동하여 local mock online 인증·암호화·압축·verified UUID·전체 configuration 순서를 검증했다.
+미검증 계정은 encrypted disconnect로 거부하고 offline fallback을 사용하지 않았다. 별도 release 실행 파일은 명시적 offline 모드에서
+실제 고정 snapshot의32registry/432entries/15tagregistry 전송을 확인했다. 두 경우 모두 spawn 준비 전 FinishConfiguration을 보내지 않았다.
+
+Java 실대조: packet scalar312,405개, login213개, crypto/auth 각1개 oracle suite, scheduled tick332trace.
+configuration fixture77개는70개 serverbound 관찰과7개 clientbound 관찰이며, Rust는 그중 구현한6개 clientbound codec을 비교한다.
+FinishConfiguration은 관찰만 했고 구현 완료로 표시하지 않는다. 실제 snapshot TCP에서도 known-pack omission/full fallback의432payload와 tags를 검증했다.
+Windows 로컬 전체332debug/332release·선택16제외, Clippy·format·Python38개 중36통과/2조건부제외,
+새 실제 JVM·snapshot6개 suite의 release 명시적 실행을 통과했다. 최종 commit의 네 native CI는 별도 확인 후 기록한다.
+
+리뷰에서 session UUID reset 시점·false shutdown 알림·profile property 묶음 순서·CPU 대기 중 read timeout·
+보낸 buffer 장기 보관 문제를 수정했다. known-pack 문자열 전체 보관을 없애고 검증 가능한 byte bound로 반복 decoding을 줄였다.
+6.29MB malformed 응답의 현재 실제 소비 경로 p50은1µs,8.39MB 유효 multibyte 입력은4.13ms였다.
+단일 Windows release/따뜻한 CPU cache 측정이며 일반 네트워크/TPS·전 플랫폼 가속을 의미하지 않는다. 긴 필드의 검증 CPU 비용은 남는다.
+
+OpenSSL3.6.3·Perl5.42.2.1·NASM3.02를 사용했고 release build 출력에서 assembly 활성화를 확인했다.
+새 native/HTTP 의존성을 처음 포함한 전체 release target 컴파일은 Cargo 기준6분12초였다. 기존 Rust artifact가 있어 완전한 fresh-target 측정은 아니다.
+동일 cache의 release binary build0.172s/변경 없음0.141s/main timestamp 재컴파일2.164s, 실행 파일7,958,528bytes였다.
+이전 작은 server binary보다 의존성·초기 build 비용이 커졌다. 빌드 peak RAM은 측정하지 않았다.
+원시 근거는 로컬 `Roadmap/reviews/login-build-cost.json`, `login-binary-smoke.json`과 두 검수 보고서에 있다.
 
 ## 압축·section 변경·configuration 데이터 추가
 
