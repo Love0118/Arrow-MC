@@ -1,6 +1,6 @@
 use arrow_mc::nbt::{Compound, NbtString, Tag};
 use arrow_mc::server::chunk_packet::{
-    self, BlockEntity, ChunkWithLight, Error, HeightmapEntry, LightData, Limits,
+    self, BlockEntity, ChunkWithLight, Error, HeightmapEntry, LightData, LightUpdate, Limits,
 };
 use arrow_mc::world::{heightmap::HeightmapKind, preparation::ChunkAddress};
 
@@ -216,7 +216,7 @@ fn type_domain_compound_kind_and_nested_nbt_errors_fail_preflight() {
 #[test]
 fn light_masks_use_byte_counts_and_preserve_allocated_zero_updates() {
     let zero_data = [0; 2048];
-    let updates: [&[u8]; 1] = [&zero_data];
+    let updates = [LightUpdate::Bytes(&zero_data)];
     let input = ChunkWithLight {
         light: LightData {
             sky_mask: &[0x80, 1, 0, 0],
@@ -240,7 +240,7 @@ fn light_masks_use_byte_counts_and_preserve_allocated_zero_updates() {
 fn low_level_light_codec_limits_do_not_invent_mask_popcount_constraints() {
     for length in [0, 1, 2047, 2048, 2049] {
         let bytes = vec![0x5a; length];
-        let updates = [bytes.as_slice()];
+        let updates = [LightUpdate::Bytes(&bytes)];
         let input = ChunkWithLight {
             light: LightData {
                 // Deliberately overlapping masks and counts: accepted by raw codec.

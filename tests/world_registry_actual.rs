@@ -18,7 +18,7 @@ fn actual_official_registry_resolves_every_state_and_biome() {
             PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .parent()
                 .unwrap()
-                .join("Decompile/bootstrap/26.3-pre-2-block-states-v2")
+                .join("Decompile/bootstrap/26.3-pre-2-block-states-v3")
         });
     // These defaults were recorded from trusted preparation stdout. Reprepared
     // bundles must supply their independently recorded digests, not read this file.
@@ -28,7 +28,7 @@ fn actual_official_registry_resolves_every_state_and_biome() {
     let expected = ExpectedRegistryReference {
         manifest_sha256: anchor(
             "ARROW_BLOCK_STATE_MANIFEST_SHA256",
-            "ac40352daeef56d8a273116f9573d1684c0e13c96e5d93e485900b4a021c5557",
+            "19c81b4f667315d5981385cbab154e31b4e0ece899d171afb6fad51caa4a4a39",
         ),
         configuration_manifest_sha256: anchor(
             "ARROW_CONFIGURATION_MANIFEST_SHA256",
@@ -47,6 +47,15 @@ fn actual_official_registry_resolves_every_state_and_biome() {
     assert_eq!(snapshot.block_registry().bits(), 16);
     assert_eq!(snapshot.biome_count(), 67);
     assert_eq!(snapshot.block_entity_type_count(), 49);
+    assert_eq!(snapshot.face_count(), 377);
+    assert_eq!(
+        snapshot.bedrock_id(),
+        Some(
+            snapshot
+                .block_state(&Tag::String("minecraft:bedrock".into()))
+                .id
+        )
+    );
     assert_eq!(
         snapshot.configuration_manifest_sha256(),
         expected.configuration_manifest_sha256
@@ -109,4 +118,44 @@ fn actual_official_registry_resolves_every_state_and_biome() {
             Some(entry["protocol_id"].as_u64().unwrap() as u32)
         );
     }
+    // This binary contains the actual initialized official API observations,
+    // including exhaustive ordered face pairs, anchored by the trusted manifest.
+    let light = fs::read(root.join("lighting.bin")).unwrap();
+    assert_eq!(light.len(), 589351);
+    let mut disabled_cached_faces = 0;
+    for (id, encoded) in light[16..16 + 35723 * 16].chunks_exact(16).enumerate() {
+        let material = snapshot.light_material(id as u32).unwrap();
+        assert_eq!(material.emission, encoded[0], "emission {id}");
+        assert_eq!(material.dampening, encoded[1], "dampening {id}");
+        assert_eq!(material.can_occlude, encoded[2] & 1 != 0);
+        assert_eq!(material.use_shape_for_light_occlusion, encoded[2] & 2 != 0);
+        assert_eq!(material.empty_shape(), encoded[2] != 3);
+        for direction in 0..6 {
+            let face = u16::from_le_bytes(
+                encoded[4 + direction * 2..6 + direction * 2]
+                    .try_into()
+                    .unwrap(),
+            );
+            assert_eq!(material.faces[direction], face, "face {id}/{direction}");
+            if material.empty_shape() && face != 0 {
+                disabled_cached_faces += 1;
+            }
+        }
+    }
+    assert_eq!(disabled_cached_faces, 68636);
+    let pairs = &light[16 + 35723 * 16..];
+    let mut occluding_pairs = 0;
+    for first in 0..377u16 {
+        for second in 0..377u16 {
+            let bit = first as usize * 377 + second as usize;
+            let expected = pairs[bit / 8] & (1 << (bit % 8)) != 0;
+            assert_eq!(
+                snapshot.face_occludes(first, second),
+                Some(expected),
+                "pair {first}/{second}"
+            );
+            occluding_pairs += usize::from(expected);
+        }
+    }
+    assert_eq!(occluding_pairs, 22921);
 }

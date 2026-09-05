@@ -161,7 +161,7 @@ struct CanonicalRow {
     y: i8,
 }
 struct CanonicalChunk {
-    resident: ResidentChunk,
+    resident: Arc<ResidentChunk>,
     rows: Vec<CanonicalRow>,
 }
 struct DemandSlot {
@@ -191,6 +191,7 @@ pub struct ChunkLoadingOwner {
     resident_budget: ResidentChunkBudget,
     default_section: Section,
     identity: Arc<()>,
+    source_revision: Arc<()>,
 }
 
 impl ChunkLoadingOwner {
@@ -233,6 +234,7 @@ impl ChunkLoadingOwner {
             resident_budget: ResidentChunkBudget::new(resident_bytes),
             default_section,
             identity: Arc::new(()),
+            source_revision: Arc::new(()),
         })
     }
 
@@ -304,6 +306,7 @@ impl ChunkLoadingOwner {
             .map_or(0, |chunk| chunk.rows.capacity() * size_of::<CanonicalRow>());
         drop(slot);
         self.metadata_bytes -= bytes;
+        self.source_revision = Arc::new(());
         true
     }
 
@@ -336,6 +339,7 @@ impl ChunkLoadingOwner {
         self.height = height;
         self.has_sky_light = has_sky_light;
         self.default_section = default_section;
+        self.source_revision = Arc::new(());
         Ok(epoch)
     }
 
@@ -399,12 +403,29 @@ impl ChunkLoadingOwner {
             }
         };
         self.metadata_bytes += rows.capacity() * size_of::<CanonicalRow>();
-        self.slots[index].canonical = Some(CanonicalChunk { resident, rows });
+        self.slots[index].canonical = Some(CanonicalChunk {
+            resident: Arc::new(resident),
+            rows,
+        });
+        self.source_revision = Arc::new(());
         Ok(PublishReport { key, relocated })
     }
 
     pub fn resident(&self, address: ChunkAddress) -> Option<&ResidentChunk> {
-        self.canonical(address).map(|chunk| &chunk.resident)
+        self.canonical(address).map(|chunk| chunk.resident.as_ref())
+    }
+    /// Shallow immutable data snapshot. Its existing resident lease remains live
+    /// after removal/reload until every snapshot is dropped. Canonical indices
+    /// are not included; a consumer admits its own index backing separately.
+    pub(crate) fn snapshot_data(&self, address: ChunkAddress) -> Option<Arc<ResidentChunk>> {
+        self.canonical(address)
+            .map(|chunk| Arc::clone(&chunk.resident))
+    }
+    pub(crate) fn source_revision(&self) -> Arc<()> {
+        Arc::clone(&self.source_revision)
+    }
+    pub(crate) fn source_registry(&self) -> Arc<ChunkRegistrySnapshot> {
+        Arc::clone(&self.registries)
     }
     pub fn stored_position(&self, address: ChunkAddress) -> Option<(i32, i32)> {
         self.resident(address)

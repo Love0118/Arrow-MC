@@ -10,7 +10,7 @@ packet compression·section 변경/완료 소유자·실제 configuration snapsh
 [로그인·configuration·예약 tick](login-configuration.md)에는 이번 실제 접속 경로와 실행 방법이 있다.
 로그인 인증부터 configuration까지 연결했고, Play·spawn·월드 생성·게임 tick 실행은 남아 있다.
 이후 실제 chunk 저장 로딩·canonical owner·heightmap·view·chunk packet을 추가했다.
-최신 source commit `15e689d`는 네 native 플랫폼에서 debug/release 각각521개와 Clippy·format을 통과했다.
+직전 source commit `15e689d`는 네 native 플랫폼에서 debug/release 각각521개와 Clippy·format을 통과했다.
 각 profile의 선택29개는 기본 CI에서 제외하며, 실제 Java 실행 근거는 아래 단계별 기록에서 구분한다.
 
 commit `7a3e90e`의 [CI run33953216241](https://github.com/Love0118/Arrow-MC/actions/runs/33953216241)에서 네 native 플랫폼
@@ -23,6 +23,32 @@ Tokio1.53.1·serde_json1.0.151·flate2 1.1.10(zlib-rs)·sha2 0.10.9와 OpenSSL0.
 저장 압축의 최소 기능 lz4_flex0.14.0·xxhash-rust0.8.18을 추가했다.
 현재 고정 외부 의존성129개의 [원문 의존성 고지](../third_party/rust/README.md)를 수집·검사했다.
 이전의 외부 의존성0개는 아래 초기 데이터 기반 snapshot에 해당하며 현재 서버 package 전체의 수치가 아니다.
+
+## 조명 전파·공용 CPU·게시 경계 추가
+
+[block/sky 조명](lighting.md)의 state/face metadata, DataLayer·section storage, 전파와 초기 재계산을 구현했다.
+canonical source를 포착하기 전에 CPU metadata 예산을 확보하고, source palette는 기존 resident와 공유한다.
+중단·실패·취소·완료까지 같은 예약을 유지하며, 현재 domain과 canonical revision에 맞는 두 layer만 packet에 제공한다.
+실제 Anvil→canonical resident→공용 CPU→조명 승인→chunk packet→기존 TCP 경로를 검증했다.
+
+Windows 전체 debug/release 각각 **612개 통과·37개 선택 제외**, strict all-target Clippy·format,
+Python **57개 통과·2개 제외**와 고정 의존성 **129개** 고지 검사를 통과했다.
+8개 lighting/packet/registry 선택 oracle, 갱신한 chunk·heightmap oracle2개와 새 combined lighting oracle를 별도 실행했다.
+combined oracle는 실제 Java `LevelLightEngine`의 2영역·216개 전체 layer·884,736 nibble을 무제한/7단위 실행과 각각 대조했다.
+독립 정확성·자원/추상화 리뷰 두 역할이 kernel, worker 취소·복구, source domain과 packet 수명을 검수했다.
+이 배치의 native CI는 source commit을 고정한 뒤 별도 기록한다.
+
+새 dependency·crate·world trait·per-world CPU pool은 추가하지 않았다. 기존 native 의존성 cache가 있는 로컬 all-target compile은
+debug30.05s/release53.42s였다. 테스트 포함 총65.08s/87.72s이며 clean build나 동일 소스 성능 개선 수치가 아니다.
+로그·집계는 로컬 `Roadmap/reviews/lighting-{debug,release}.log`와 대응 summary JSON에 있다.
+
+[32청크 초기 조명 benchmark](benchmarks/lighting-windows-summary.json)는 같은 입력을 세 번씩 측정해
+inline198.64ms, pool1 worker230.67ms, 2 workers110.93ms, 4 workers61.68ms 중앙값을 기록했다.
+모든 실행의 비교 값1,775,616개가 일치했고, 보수적 공용 예약151,230,784bytes와 별도 worker stack을 기록했다.
+이 fixture에서는 1 worker 비용이 더 컸으며, 4 workers는 inline 대비 약3.22배였다. 전체 TPS·p99·RSS 또는 Vanilla 대비 속도 주장이 아니다.
+
+저장 light 재사용·PRE/POST callbacks·ticket/status·실제 world mutation과 Play는 남아 있다.
+현재 완료본은 보관하는 동안 CPU slot을 유지한다. 긴 resident 조명 수명의 별도 예산 전환과 겹치는 domain 조정도 후속 작업이다.
 
 ## Heightmap·시야·chunk packet 추가
 

@@ -6,7 +6,7 @@ use arrow_mc::{
     nbt::{Compound, NbtString, Tag},
     world::storage::registry::RegistryLoadLimits,
 };
-use fixture::{FILES, Fixture, hex, json_file, write_json};
+use fixture::{FILES, Fixture, hex, json_file, lighting_bytes, write_json};
 use serde_json::{Value, json};
 use std::fs;
 
@@ -545,7 +545,7 @@ fn all_heightmap_predicates_use_independent_tags_air_and_fluid() {
 }
 
 #[test]
-fn v2_requires_tag_membership_and_valid_block_entity_domain() {
+fn requires_tag_membership_and_valid_block_entity_domain() {
     for tags in [json!(-1), json!(4), json!(true), Value::Null] {
         let mut fixture = Fixture::new();
         fixture.edit("blocks.json", |data| {
@@ -584,4 +584,126 @@ fn v2_requires_tag_membership_and_valid_block_entity_domain() {
         snapshot.block_entity_type_id(&NbtString::from_utf16(vec![0xd800])),
         None
     );
+}
+
+#[test]
+fn lighting_materials_keep_raw_faces_flags_and_ordered_pair_results() {
+    let mut fixture = Fixture::new();
+    let material = |emission: u8, dampening: u8, flags: u8, faces: [u16; 6]| {
+        let mut bytes = [0; 16];
+        bytes[..3].copy_from_slice(&[emission, dampening, flags]);
+        for (index, face) in faces.into_iter().enumerate() {
+            bytes[4 + index * 2..6 + index * 2].copy_from_slice(&face.to_le_bytes());
+        }
+        bytes
+    };
+    // Synthetic ordered pair 2→3 is true while 3→2 is false. Runtime must not
+    // silently impose symmetry on Java's epsilon-sensitive shape predicate.
+    let pairs = [0b00100010, 0b00101010];
+    let inputs = [
+        material(0, 0, 0, [0; 6]),
+        material(15, 1, 3, [0, 1, 2, 3, 2, 0]),
+        material(1, 15, 1, [1; 6]),
+        material(2, 0, 2, [0; 6]),
+        material(0, 0, 0, [0; 6]),
+    ];
+    // Full face row/column must always be true.
+    let mut pairs = pairs;
+    for id in 0..4usize {
+        for bit in [4 + id, id * 4 + 1] {
+            pairs[bit / 8] |= 1 << (bit % 8);
+        }
+    }
+    pairs[1] |= 1 << 3; // (2,3)
+    pairs[1] &= !(1 << 6); // (3,2)
+    fixture.edit_lighting(|bytes| *bytes = lighting_bytes(&inputs, 4, &pairs));
+    let snapshot = fixture.load();
+    assert_eq!(snapshot.face_count(), 4);
+    let first = snapshot.light_material(1).unwrap();
+    assert_eq!((first.emission, first.dampening), (15, 1));
+    assert_eq!(first.faces, [0, 1, 2, 3, 2, 0]);
+    assert!(!first.empty_shape());
+    let disabled = snapshot.light_material(2).unwrap();
+    assert!(disabled.can_occlude);
+    assert!(!disabled.use_shape_for_light_occlusion);
+    assert_eq!(disabled.faces, [1; 6]);
+    assert!(disabled.empty_shape());
+    assert!(
+        snapshot
+            .light_material(3)
+            .unwrap()
+            .use_shape_for_light_occlusion
+    );
+    assert!(snapshot.light_material(3).unwrap().empty_shape());
+    assert_eq!(snapshot.face_occludes(2, 3), Some(true));
+    assert_eq!(snapshot.face_occludes(3, 2), Some(false));
+    assert_eq!(snapshot.face_occludes(4, 0), None);
+    assert_eq!(snapshot.light_material(5), None);
+    assert_eq!(snapshot.bedrock_id(), None);
+    fixture.edit("blocks.json", |data| {
+        data["blocks"][1]["id"] = json!("minecraft:bedrock")
+    });
+    assert_eq!(fixture.load().bedrock_id(), Some(1));
+}
+
+#[test]
+fn rejects_incomplete_or_out_of_domain_lighting_binary() {
+    type Change = (&'static str, fn(&mut Vec<u8>));
+    let changes: &[Change] = &[
+        ("magic", |b| b[0] = 0),
+        ("short header", |b| b.truncate(15)),
+        ("wrong state count", |b| b[8] = 4),
+        ("face count1", |b| b[12] = 1),
+        ("huge face count", |b| {
+            b[12..16].copy_from_slice(&u32::MAX.to_le_bytes())
+        }),
+        ("truncated material/pair", |b| {
+            b.pop();
+        }),
+        ("extra bytes", |b| b.push(0)),
+        ("emission", |b| b[16] = 16),
+        ("dampening", |b| b[17] = 16),
+        ("flags", |b| b[18] = 4),
+        ("reserved", |b| b[19] = 1),
+        ("face outside domain", |b| b[20] = 2),
+        ("non-occluding nonempty face", |b| b[20] = 1),
+        ("padding", |b| *b.last_mut().unwrap() |= 0x80),
+        ("empty+empty", |b| *b.last_mut().unwrap() |= 1),
+        ("full row", |b| *b.last_mut().unwrap() &= !4),
+    ];
+    for (name, change) in changes {
+        let mut fixture = Fixture::new();
+        fixture.edit_lighting(change);
+        assert!(fixture.rejects(RegistryLoadLimits::default()), "{name}");
+    }
+    let fixture = Fixture::new();
+    assert!(fixture.rejects(RegistryLoadLimits {
+        light_faces: 1,
+        ..RegistryLoadLimits::default()
+    }));
+}
+
+#[test]
+fn binary_lighting_uses_its_own_input_and_retained_capacity_admission() {
+    let fixture = Fixture::new();
+    let json_bytes = fs::metadata(fixture.root.join("manifest.json"))
+        .unwrap()
+        .len() as usize
+        + FILES
+            .iter()
+            .filter(|&&path| path != "lighting.bin")
+            .map(|path| fs::metadata(fixture.root.join(path)).unwrap().len() as usize)
+            .sum::<usize>();
+    let binary_bytes = fs::metadata(fixture.root.join("lighting.bin"))
+        .unwrap()
+        .len() as usize;
+    let required = 128 * json_bytes + 2 * binary_bytes;
+    assert!(!fixture.rejects(RegistryLoadLimits {
+        allocation_bytes: required,
+        ..RegistryLoadLimits::default()
+    }));
+    assert!(fixture.rejects(RegistryLoadLimits {
+        allocation_bytes: required - 1,
+        ..RegistryLoadLimits::default()
+    }));
 }

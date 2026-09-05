@@ -1,7 +1,9 @@
 import contextlib
+import hashlib
 import io
 from pathlib import Path
 import subprocess
+import struct
 import sys
 import tempfile
 import unittest
@@ -30,13 +32,16 @@ class BlockStatePreparationTests(unittest.TestCase):
         configuration.write_json(self.lock_path, self.lock)
         self.generator = self.repository / "ExportBlockStateData.java"
         self.generator.write_text("// independently written synthetic test helper", encoding="utf-8")
+        self.lighting_generator = self.repository / "ExportLightingData.java"
+        self.lighting_generator.write_text("// synthetic lighting helper", encoding="utf-8")
         self.server = self.root / "server.jar"
         self.server.write_bytes(b"synthetic verified server artifact")
         self.source_jar = {"sha256": configuration.digest_file(self.server),
                            "bytes": self.server.stat().st_size}
         for module, name, value in ((configuration, "REPOSITORY", self.repository),
                                     (block_states, "LOCK_PATH", self.lock_path),
-                                    (block_states, "GENERATOR", self.generator)):
+                                    (block_states, "GENERATOR", self.generator),
+                                    (block_states, "LIGHTING_GENERATOR", self.lighting_generator)):
             patcher = patch.object(module, name, value)
             patcher.start()
             self.addCleanup(patcher.stop)
@@ -103,13 +108,43 @@ class BlockStatePreparationTests(unittest.TestCase):
     def fake_java(self, command, **options):
         root = Path(command[-1])
         self.assertEqual(command[:3], ["test-java", "-Xmx2G", "-cp"])
-        self.assertEqual(command[3:5], [str(self.server), str(self.generator)])
+        self.assertEqual(command[3], str(self.server))
         self.assertEqual(options, {"cwd": root.parent, "check": True})
         logs = root.parent / "logs"
-        logs.mkdir()
+        logs.mkdir(exist_ok=True)
         (logs / "latest.log").write_text("test Java logs", encoding="utf-8")
-        self.write_blocks(root)
+        if command[-2] == str(self.lighting_generator):
+            self.write_lighting(root)
+        else:
+            self.assertEqual(command[-2], str(self.generator))
+            self.write_blocks(root)
         return subprocess.CompletedProcess(command, 0)
+
+    def write_lighting(self, root):
+        # Canonical empty/full plus a half-width face; one ordered pair is intentionally asymmetric.
+        coordinates = [[[0], [0], [0]], [[0, 1], [0, 1], [0, 1]], [[0, 0.5, 1], [0, 1], [0, 1]]]
+        descriptors = []
+        encoded = bytearray()
+        for axes, occupied in zip(coordinates, (b"", b"\x01", b"\x01")):
+            bits = [[struct.unpack("<Q", struct.pack("<d", value))[0] for value in axis] for axis in axes]
+            for axis in bits:
+                encoded += struct.pack("<I", len(axis))
+                for value in axis:
+                    encoded += struct.pack("<Q", value)
+            encoded += occupied
+            descriptors.append({"coordinate_raw_bits": [[str(value) for value in axis] for axis in bits],
+                                "occupied_cells_hex": occupied.hex()})
+        pairs = b"\xfa\x00"
+        material = struct.pack("<BBBB6H", 7, 2, 0, 0, 1, 2, 0, 2, 1, 0)
+        (root / "lighting.bin").write_bytes(b"ARLITE3\0" + struct.pack("<II", 5, 3) + material * 5 + pairs)
+        configuration.write_json(root / "lighting-face-descriptors.json", descriptors)
+        configuration.write_json(root / "lighting-export-metadata.json", {
+            "minecraft_version": VERSION, "protocol": PROTOCOL, "source_jar": self.source_jar,
+            "selected_pack_ids": ["vanilla"], "state_count": 5, "face_count": 3,
+            "material_bytes": 80, "pair_bytes": 2, "occluding_pairs": 6,
+            "runtime_variant_count": 3, "runtime_variant_ordered_pairs_verified": 9,
+            "descriptor_binary_bytes": len(encoded), "descriptor_binary_sha256": hashlib.sha256(encoded).hexdigest(),
+        })
 
     def prepare(self, **options):
         return block_states.prepare(options.pop("configuration_manifest_sha256", self.trusted_digest),
@@ -123,23 +158,27 @@ class BlockStatePreparationTests(unittest.TestCase):
     def test_preserves_biome_order_binds_trusted_identity_and_hashes_every_output(self):
         with patch.object(block_states.subprocess, "run", side_effect=self.fake_java) as java:
             output = self.prepare()
-        java.assert_called_once()
+        self.assertEqual(java.call_count, 2)
         self.artifacts.assert_called_once_with(self.root, VERSION, self.lock)
-        self.assertEqual(output, self.root / "bootstrap" / (VERSION + "-block-states-v2"))
+        self.assertEqual(output, self.root / "bootstrap" / (VERSION + "-block-states-v3"))
         self.assertEqual(configuration.read_json(output / "biomes.json"), [
             {"id": "minecraft:zeta", "protocol_id": 0}, {"id": "minecraft:alpha", "protocol_id": 1}])
         manifest = configuration.read_json(output / "manifest.json")
-        self.assertEqual(manifest["format_version"], 2)
+        self.assertEqual(manifest["format_version"], 3)
         self.assertEqual(manifest["configuration_manifest_sha256"], self.trusted_digest)
         self.assertEqual(manifest["selected_packs"], self.manifest["selected_packs"])
         self.assertEqual(manifest["source_jar"], self.source_jar)
-        self.assertEqual([record["path"] for record in manifest["files"]], sorted(block_states.JSON_FILES))
+        self.assertEqual([record["path"] for record in manifest["files"]], sorted(block_states.OUTPUT_FILES))
         for record in manifest["files"]:
             self.assertEqual(record, configuration.file_record(output, output / record["path"]))
         self.assertEqual(manifest["provenance"]["generator"]["sha256"],
                          configuration.digest_file(self.generator))
         self.assertFalse((output / "logs").exists())
         self.assertFalse(list(output.parent.glob(".block-states-*")))
+        material = struct.unpack_from("<BBBB6H", (output / "lighting.bin").read_bytes(), 16)
+        self.assertEqual(material, (7, 2, 0, 0, 1, 2, 0, 2, 1, 0))
+        self.assertEqual((output / "lighting.bin").read_bytes()[-2:], b"\xfa\x00")
+        self.assertFalse((output / "lighting-face-descriptors.json").exists())
         blocks = configuration.read_json(output / "blocks.json")
         self.assertEqual(len((output / "blocks.json").read_text(encoding="utf-8").splitlines()), 1)
         self.assertEqual([block["heightmap_tags"] for block in blocks["blocks"]], [0, 3])
@@ -326,14 +365,18 @@ class BlockStatePreparationTests(unittest.TestCase):
                         self.prepare()
                 self.assertEqual(list(self.config_root.parent.iterdir()), [self.config_root])
 
-    def test_schema_v2_default_preserves_existing_v1_bundle(self):
+    def test_schema_v3_default_preserves_existing_v1_and_v2_bundles(self):
         previous = self.config_root.parent / (VERSION + "-block-states")
         previous.mkdir()
         (previous / "manifest.json").write_text("preserved v1", encoding="utf-8")
+        previous_v2 = self.config_root.parent / (VERSION + "-block-states-v2")
+        previous_v2.mkdir()
+        (previous_v2 / "manifest.json").write_text("preserved v2", encoding="utf-8")
         with patch.object(block_states.subprocess, "run", side_effect=self.fake_java):
             output = self.prepare()
-        self.assertEqual(configuration.read_json(output / "manifest.json")["format_version"], 2)
+        self.assertEqual(configuration.read_json(output / "manifest.json")["format_version"], 3)
         self.assertEqual((previous / "manifest.json").read_text(encoding="utf-8"), "preserved v1")
+        self.assertEqual((previous_v2 / "manifest.json").read_text(encoding="utf-8"), "preserved v2")
 
     def test_output_and_configuration_boundaries_preserve_existing_files(self):
         for output in (self.repository / "bulk", self.root / "sources" / VERSION,
@@ -383,6 +426,68 @@ class BlockStatePreparationTests(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         self.prepare()
 
+    def test_lighting_header_material_pairs_and_padding_are_validated_before_publication(self):
+        mutations = {
+            "magic": lambda data: data.__setitem__(0, 0),
+            "state count": lambda data: struct.pack_into("<I", data, 8, 4),
+            "face count": lambda data: struct.pack_into("<I", data, 12, 1),
+            "emission": lambda data: data.__setitem__(16, 16),
+            "dampening": lambda data: data.__setitem__(17, 16),
+            "unknown flags": lambda data: data.__setitem__(18, 4),
+            "reserved": lambda data: data.__setitem__(19, 1),
+            "face ID": lambda data: struct.pack_into("<H", data, 20, 3),
+            "canonical full": lambda data: data.__setitem__(96, 0),
+            "pair padding": lambda data: data.__setitem__(-1, 0x80),
+            "truncated": lambda data: data.pop(),
+            "trailing": lambda data: data.append(0),
+        }
+        expected_errors = {
+            "canonical full": "canonical empty/full face pair results",
+            "pair padding": "Nonzero lighting pair padding bits",
+        }
+        for label, mutation in mutations.items():
+            with self.subTest(label=label):
+                def export(command, **options):
+                    self.fake_java(command, **options)
+                    if command[-2] == str(self.lighting_generator):
+                        path = Path(command[-1]) / "lighting.bin"
+                        contents = bytearray(path.read_bytes())
+                        mutation(contents)
+                        path.write_bytes(contents)
+                with patch.object(block_states.subprocess, "run", side_effect=export):
+                    with self.assertRaisesRegex(ValueError, expected_errors.get(label, "lighting|Lighting|canonical")):
+                        self.prepare()
+                self.assertEqual(list(self.config_root.parent.iterdir()), [self.config_root])
+
+    def test_lighting_metadata_and_descriptor_proof_are_authenticated(self):
+        metadata_mutations = [lambda data: data.update(protocol=1), lambda data: data.update(selected_pack_ids=[]),
+                              lambda data: data.update(source_jar={}), lambda data: data.update(state_count=4),
+                              lambda data: data.update(occluding_pairs=7),
+                              lambda data: data.update(runtime_variant_ordered_pairs_verified=8),
+                              lambda data: data.update(descriptor_binary_sha256="0" * 64)]
+        descriptor_mutations = [lambda data: data.pop(),
+                                lambda data: data[0]["coordinate_raw_bits"][0].__setitem__(0, "-1"),
+                                lambda data: data[2]["coordinate_raw_bits"][0].__setitem__(1, "0"),
+                                lambda data: data[2]["coordinate_raw_bits"][0].__setitem__(1, "9218868437227405312"),
+                                lambda data: data[2].update(occupied_cells_hex="80"),
+                                lambda data: data[1].update(occupied_cells_hex="00")]
+        descriptor_errors = ["descriptor count mismatch", "raw lighting coordinate bits",
+                             "finite and strictly increasing", "finite and strictly increasing",
+                             "descriptor occupancy bitmap", "canonical empty and full"]
+        for filename, mutations in (("lighting-export-metadata.json", metadata_mutations),
+                                     ("lighting-face-descriptors.json", descriptor_mutations)):
+            for index, mutation in enumerate(mutations):
+                with self.subTest(file=filename, case=index):
+                    def export(command, **options):
+                        self.fake_java(command, **options)
+                        if command[-2] == str(self.lighting_generator):
+                            self.change_json(Path(command[-1]), filename, mutation)
+                    with patch.object(block_states.subprocess, "run", side_effect=export):
+                        with self.assertRaisesRegex(ValueError, descriptor_errors[index]
+                                                    if filename == "lighting-face-descriptors.json" else "[Ll]ighting"):
+                            self.prepare()
+                    self.assertEqual(list(self.config_root.parent.iterdir()), [self.config_root])
+
     def test_failed_java_and_concurrent_destination_cleanup_preserves_source(self):
         def fail(command, **options):
             self.fake_java(command, **options)
@@ -391,10 +496,10 @@ class BlockStatePreparationTests(unittest.TestCase):
             with self.assertRaises(subprocess.CalledProcessError):
                 self.prepare()
         self.assertEqual(list(self.config_root.parent.iterdir()), [self.config_root])
-        destination = self.config_root.parent / (VERSION + "-block-states-v2")
+        destination = self.config_root.parent / (VERSION + "-block-states-v3")
         def concurrent(command, **options):
             self.fake_java(command, **options)
-            destination.mkdir()
+            destination.mkdir(exist_ok=True)
             (destination / "keep.txt").write_text("other writer", encoding="utf-8")
         with patch.object(block_states.subprocess, "run", side_effect=concurrent):
             with self.assertRaisesRegex(ValueError, "already exists"):
@@ -414,10 +519,10 @@ class BlockStatePreparationTests(unittest.TestCase):
         with patch.object(sys, "argv", arguments), contextlib.redirect_stdout(stdout), \
                 patch.object(block_states.subprocess, "run", side_effect=self.fake_java):
             block_states.main()
-        output = self.config_root.parent / (VERSION + "-block-states-v2")
+        output = self.config_root.parent / (VERSION + "-block-states-v3")
         digest = configuration.digest_file(output / "manifest.json")
         self.assertIn(f"Trusted block-state manifest SHA256: {digest}", stdout.getvalue())
-        self.assertEqual({path.name for path in output.iterdir()}, {*block_states.JSON_FILES, "manifest.json"})
+        self.assertEqual({path.name for path in output.iterdir()}, {*block_states.OUTPUT_FILES, "manifest.json"})
 
 
 if __name__ == "__main__":

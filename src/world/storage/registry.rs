@@ -14,13 +14,17 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
+mod lighting;
+pub use lighting::{EMPTY_FACE, FULL_FACE, LightMaterial};
+
 const VERSION: &str = "26.3-pre-2";
 const PROTOCOL: u32 = 1_073_742_158;
-const FILES: [&str; 4] = [
+const FILES: [&str; 5] = [
     "blocks.json",
     "biomes.json",
     "export-metadata.json",
     "block-entity-types.json",
+    "lighting.bin",
 ];
 
 #[derive(Clone, Copy, Debug)]
@@ -36,14 +40,16 @@ pub struct ExpectedRegistryReference {
 pub struct RegistryLoadLimits {
     pub file_bytes: usize,
     pub total_file_bytes: usize,
-    /// Fixed admission policy: 128 budget bytes per JSON input byte, covering
-    /// deserialization and retained tables. This is not an allocator/RSS bound;
+    /// Fixed admission policy: 128 budget bytes per JSON input byte, and twice
+    /// the binary lighting bytes for input plus retained material/pair capacities.
+    /// This is not an allocator/RSS bound;
     /// serde/string allocations are not individually fallible or accounted.
     pub allocation_bytes: usize,
     pub blocks: usize,
     pub states: usize,
     pub biomes: usize,
     pub block_entity_types: usize,
+    pub light_faces: usize,
 }
 impl Default for RegistryLoadLimits {
     fn default() -> Self {
@@ -55,6 +61,7 @@ impl Default for RegistryLoadLimits {
             states: 1 << 20,
             biomes: 65536,
             block_entity_types: 4096,
+            light_faces: 4096,
         }
     }
 }
@@ -170,6 +177,7 @@ pub struct ChunkRegistrySnapshot {
     state_flags: Vec<u8>,
     biomes: Vec<NamedId>,
     block_entity_types: Vec<NamedId>,
+    lighting: lighting::Lighting,
     blocks_domain: Registry,
     biomes_domain: Registry,
     air: u32,
@@ -194,7 +202,7 @@ impl ChunkRegistrySnapshot {
             return Err(Error::DigestMismatch("manifest.json".into()));
         }
         let manifest: Manifest = json(&manifest_bytes)?;
-        if manifest.format_version != 2
+        if manifest.format_version != 3
             || manifest.minecraft_version != VERSION
             || manifest.protocol != PROTOCOL
         {
@@ -219,7 +227,7 @@ impl ChunkRegistrySnapshot {
                 .iter()
                 .any(|name| manifest.files.iter().filter(|d| d.path == *name).count() != 1)
         {
-            return Err(invalid("expected exactly the four registry data files"));
+            return Err(invalid("expected exactly the five registry data files"));
         }
         let descriptor = |name: &str| {
             manifest
@@ -348,11 +356,16 @@ impl ChunkRegistrySnapshot {
             .find(|biome| biome.id == "minecraft:plains")
             .ok_or_else(|| invalid("missing plains biome"))?
             .protocol_id;
+        let lighting_bytes = reader.read(FILES[4], Some(descriptor(FILES[4])))?;
+        let lighting =
+            lighting::Lighting::parse(&lighting_bytes, data.state_count, limits.light_faces)?;
+        drop(lighting_bytes);
         Ok(Self {
             blocks: data.blocks,
             state_flags: data.state_flags,
             biomes,
             block_entity_types,
+            lighting,
             blocks_domain,
             biomes_domain,
             air,
@@ -388,6 +401,23 @@ impl ChunkRegistrySnapshot {
     }
     pub fn plains_id(&self) -> u32 {
         self.plains
+    }
+    /// Reduced synthetic domains may omit bedrock; lighting admission must reject
+    /// that absence rather than inventing an air fallback for unavailable chunks.
+    pub fn bedrock_id(&self) -> Option<u32> {
+        self.blocks
+            .binary_search_by(|block| block.id.as_str().cmp("minecraft:bedrock"))
+            .ok()
+            .map(|index| self.blocks[index].default_state)
+    }
+    pub fn light_material(&self, id: u32) -> Option<LightMaterial> {
+        self.lighting.material(id)
+    }
+    pub fn face_count(&self) -> usize {
+        self.lighting.face_count()
+    }
+    pub fn face_occludes(&self, first: u16, second: u16) -> Option<bool> {
+        self.lighting.face_occludes(first, second)
     }
     pub fn state_flags(&self, id: u32) -> Option<StateFlags> {
         self.state_flags.get(id as usize).map(|flags| StateFlags {
@@ -608,7 +638,7 @@ fn json<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T, Error> {
     serde_json::from_slice(bytes).map_err(|error| invalid(error.to_string()))
 }
 
-// Fixed four-file format: this reader deliberately has no registry/plugin
+// Fixed five-file format: this reader deliberately has no registry/plugin
 // discovery hooks. All JSON admission occurs before serde allocates its tables.
 struct Reader {
     root: PathBuf,
@@ -636,7 +666,9 @@ impl Reader {
             .checked_add(size)
             .ok_or(Error::Limit("total file bytes"))?;
         self.admission = size
-            .checked_mul(128)
+            // Binary tables require input plus their equally sized retained
+            // material/pair payload. JSON keeps its conservative schema policy.
+            .checked_mul(if path == "lighting.bin" { 2 } else { 128 })
             .and_then(|charge| self.admission.checked_add(charge))
             .ok_or(Error::Limit("allocation admission"))?;
         if self.total > self.limits.total_file_bytes {
@@ -650,6 +682,9 @@ impl Reader {
         bytes
             .try_reserve_exact(capacity)
             .map_err(|_| Error::Limit("file allocation"))?;
+        if path == "lighting.bin" && bytes.capacity() > capacity {
+            return Err(Error::Limit("lighting input capacity"));
+        }
         file.take(capacity as u64).read_to_end(&mut bytes)?;
         if bytes.len() != size {
             return Err(invalid("file changed during read"));
@@ -684,6 +719,7 @@ pub(crate) fn storage_test_snapshot() -> ChunkRegistrySnapshot {
             id: "test:entity".into(),
             protocol_id: 0,
         }],
+        lighting: lighting::Lighting::air_only(),
         blocks_domain: Registry::new(1).unwrap(),
         biomes_domain: Registry::new(1).unwrap(),
         air: 0,

@@ -1,0 +1,322 @@
+{
+  "benchmark": "initial block+sky LightingWork across independent multichunk domains",
+  "context": {
+    "arch": "x86_64",
+    "available_parallelism": 12,
+    "build_dependencies": "Warm pinned Cargo release dependency artifacts; compilation is excluded from elapsed_ns.",
+    "cpu_label": "AMD Ryzen 5 9600X 6-Core Processor             ",
+    "invocation": "cargo test --locked --release --test lighting_benchmark -- --ignored --nocapture --test-threads=1",
+    "os": "windows",
+    "profile": "release",
+    "registry_manifest_sha256": "19c81b4f667315d5981385cbab154e31b4e0ece899d171afb6fad51caa4a4a39",
+    "registry_shared_load_admission_bytes": 134217728,
+    "rustc": "rustc 1.96.0 (ac68faa20 2026-05-25)\nbinary: rustc\ncommit-hash: ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96\ncommit-date: 2026-05-25\nhost: x86_64-pc-windows-msvc\nrelease: 1.96.0\nLLVM version: 22.1.2\n",
+    "build_observation": {
+      "command": "cargo test --locked --release --test lighting_benchmark -- --ignored --nocapture --test-threads=1",
+      "cargo_compile_elapsed_seconds": 16.8,
+      "test_elapsed_seconds": 2.77,
+      "scope": "One local final-source build with warm pinned release dependencies; not a clean build or peak build RAM measurement."
+    },
+    "metadata_only_correction": {
+      "changes": "Clarified timed temporary cleanup versus excluded final destruction; added unchanged Cargo.toml feature-configuration hash.",
+      "samples_rerun": false,
+      "measured_benchmark_sha256": "92293f10fbbc8e19a0cbae704083c257a3adf86c1f8b3fcc826b5a84ec502f77",
+      "current_reporter_sha256": "eb5fda911eaccf53a5394a327cc2616407dfd8c5367ddd2168f8990a7e00cbaf",
+      "source_hash_policy": "source_hashes retains the actually measured benchmark revision; current_reporter_sha256 identifies its metadata-only successor. Timed operations and workload are unchanged.",
+      "cargo_toml_matches_commit": "cf158de0e05c28b8719e5784ca875f0342bce018"
+    }
+  },
+  "format_version": 1,
+  "measurement_scope": "Sources/registry, pool/thread startup, final grid comparison and final result/pool destruction excluded. Engine construction, 64-unit convergence/resubmission, completion handoff and temporary kernel/address/storage cleanup included. Three rotated repetitions after one inline warmup. Global reservations are conservative ownership budgets, not RSS; registry, async task/control allocations and allocator overhead are separate. This is independent-domain initial lighting, not mutable cross-domain ticking or a Vanilla performance comparison.",
+  "measurements": [
+    {
+      "elapsed_ns": 203522300,
+      "global_reservation_bytes": 151230784,
+      "peak_running": 1,
+      "processed_units": 431836,
+      "repetition": 0,
+      "slices": 6751,
+      "source_heap_bytes": 223488,
+      "worker_stack_reservation_bytes": 0,
+      "workers": 0
+    },
+    {
+      "elapsed_ns": 217420500,
+      "global_reservation_bytes": 151230784,
+      "peak_reserved_buffer_bytes": 151230784,
+      "peak_running": 1,
+      "processed_units": 431836,
+      "repetition": 0,
+      "slices": 6751,
+      "source_heap_bytes": 223488,
+      "worker_stack_reservation_bytes": 2097152,
+      "workers": 1
+    },
+    {
+      "elapsed_ns": 115015100,
+      "global_reservation_bytes": 151230784,
+      "peak_reserved_buffer_bytes": 151230784,
+      "peak_running": 2,
+      "processed_units": 431836,
+      "repetition": 0,
+      "slices": 6751,
+      "source_heap_bytes": 223488,
+      "worker_stack_reservation_bytes": 4194304,
+      "workers": 2
+    },
+    {
+      "elapsed_ns": 66354700,
+      "global_reservation_bytes": 151230784,
+      "peak_reserved_buffer_bytes": 151230784,
+      "peak_running": 4,
+      "processed_units": 431836,
+      "repetition": 0,
+      "slices": 6751,
+      "source_heap_bytes": 223488,
+      "worker_stack_reservation_bytes": 8388608,
+      "workers": 4
+    },
+    {
+      "elapsed_ns": 230667000,
+      "global_reservation_bytes": 151230784,
+      "peak_reserved_buffer_bytes": 151230784,
+      "peak_running": 1,
+      "processed_units": 431836,
+      "repetition": 1,
+      "slices": 6751,
+      "source_heap_bytes": 223488,
+      "worker_stack_reservation_bytes": 2097152,
+      "workers": 1
+    },
+    {
+      "elapsed_ns": 110934700,
+      "global_reservation_bytes": 151230784,
+      "peak_reserved_buffer_bytes": 151230784,
+      "peak_running": 2,
+      "processed_units": 431836,
+      "repetition": 1,
+      "slices": 6751,
+      "source_heap_bytes": 223488,
+      "worker_stack_reservation_bytes": 4194304,
+      "workers": 2
+    },
+    {
+      "elapsed_ns": 61677700,
+      "global_reservation_bytes": 151230784,
+      "peak_reserved_buffer_bytes": 151230784,
+      "peak_running": 4,
+      "processed_units": 431836,
+      "repetition": 1,
+      "slices": 6751,
+      "source_heap_bytes": 223488,
+      "worker_stack_reservation_bytes": 8388608,
+      "workers": 4
+    },
+    {
+      "elapsed_ns": 197997600,
+      "global_reservation_bytes": 151230784,
+      "peak_running": 1,
+      "processed_units": 431836,
+      "repetition": 1,
+      "slices": 6751,
+      "source_heap_bytes": 223488,
+      "worker_stack_reservation_bytes": 0,
+      "workers": 0
+    },
+    {
+      "elapsed_ns": 108395100,
+      "global_reservation_bytes": 151230784,
+      "peak_reserved_buffer_bytes": 151230784,
+      "peak_running": 2,
+      "processed_units": 431836,
+      "repetition": 2,
+      "slices": 6751,
+      "source_heap_bytes": 223488,
+      "worker_stack_reservation_bytes": 4194304,
+      "workers": 2
+    },
+    {
+      "elapsed_ns": 60185900,
+      "global_reservation_bytes": 151230784,
+      "peak_reserved_buffer_bytes": 151230784,
+      "peak_running": 4,
+      "processed_units": 431836,
+      "repetition": 2,
+      "slices": 6751,
+      "source_heap_bytes": 223488,
+      "worker_stack_reservation_bytes": 8388608,
+      "workers": 4
+    },
+    {
+      "elapsed_ns": 198644200,
+      "global_reservation_bytes": 151230784,
+      "peak_running": 1,
+      "processed_units": 431836,
+      "repetition": 2,
+      "slices": 6751,
+      "source_heap_bytes": 223488,
+      "worker_stack_reservation_bytes": 0,
+      "workers": 0
+    },
+    {
+      "elapsed_ns": 240030300,
+      "global_reservation_bytes": 151230784,
+      "peak_reserved_buffer_bytes": 151230784,
+      "peak_running": 1,
+      "processed_units": 431836,
+      "repetition": 2,
+      "slices": 6751,
+      "source_heap_bytes": 223488,
+      "worker_stack_reservation_bytes": 2097152,
+      "workers": 1
+    }
+  ],
+  "medians": [
+    {
+      "median_ns": 198644200,
+      "workers": 0
+    },
+    {
+      "median_ns": 230667000,
+      "workers": 1
+    },
+    {
+      "median_ns": 110934700,
+      "workers": 2
+    },
+    {
+      "median_ns": 61677700,
+      "workers": 4
+    }
+  ],
+  "source_hashes": [
+    {
+      "path": "Cargo.lock",
+      "sha256": "c7346e967fd28819dadafbf12b7fd882ef9acd440feaf78ddb91b212f01f044f"
+    },
+    {
+      "path": "Cargo.toml",
+      "sha256": "c6da50d22e35022b1e205c0f27d2745f42846e2d293d5f87fc4eb22a4c50fcdb"
+    },
+    {
+      "path": "src/runtime/lighting.rs",
+      "sha256": "a88bf20182ea4efde868561f7be5e761dd024efc88b995d13716e0f2a289bc42"
+    },
+    {
+      "path": "src/runtime/lighting_tests.rs",
+      "sha256": "78b71b473ee584e12340a77e4a66eb41320630cdbd18a9620d1885a05f2a3cca"
+    },
+    {
+      "path": "src/runtime/mod.rs",
+      "sha256": "a86086065f5c99ee9751da4bde6e90e29ea89cf6fa145323c5c5b2d35703b9fd"
+    },
+    {
+      "path": "src/runtime/packet.rs",
+      "sha256": "2ea3ef28f4ed64732ebdb6445fc7950dc250c06bed541815456c0fc5c410a82a"
+    },
+    {
+      "path": "src/runtime/storage.rs",
+      "sha256": "7d901a625fc30ee7a7d1e47a8c2c2b67015c5ee87ab2aee37e9cb05a1236bbae"
+    },
+    {
+      "path": "src/runtime/tests.rs",
+      "sha256": "57a602d6c55accd18b3288b15f11988bb769b6d201db30e41166c73909082e40"
+    },
+    {
+      "path": "src/world/lighting/block.rs",
+      "sha256": "dbc80aaf4aa972eaedccd369437f359554837e818e33f773b1472819b150ddde"
+    },
+    {
+      "path": "src/world/lighting/layer.rs",
+      "sha256": "229e2f3d14e4fba56fdfd9c33ecd875cbaabb4c73d3ca002e484217658351361"
+    },
+    {
+      "path": "src/world/lighting/mod.rs",
+      "sha256": "11064f2c7093244a98c8eadf1a3f2990098e1d67b488285a4130ae3a6e540db8"
+    },
+    {
+      "path": "src/world/lighting/owner.rs",
+      "sha256": "3454e770e852f9b8aaafde447daceeff1afcc4aca58dc56accbe8f4d39604bbb"
+    },
+    {
+      "path": "src/world/lighting/queue.rs",
+      "sha256": "444d8618225bfe2995f4ac21c05b9e75e244f11496059495aa92431b1f362ab4"
+    },
+    {
+      "path": "src/world/lighting/sky.rs",
+      "sha256": "e3d07fa9857eeb4e98a42b220a6cb612119af7f2268a9a674b302260435ce791"
+    },
+    {
+      "path": "src/world/lighting/source.rs",
+      "sha256": "313b596f981784b032230c1a518c749794b8d08583861f6a2ddfef73ee7e965c"
+    },
+    {
+      "path": "src/world/lighting/sources.rs",
+      "sha256": "72548e836ef34df6c6aadd74a1610430ff984f73973ada99d866f5c6475e1478"
+    },
+    {
+      "path": "src/world/lighting/storage.rs",
+      "sha256": "33e9703dbb9cddf02192bd14b8656758b23c25d07e31d680de22c710a7053ab9"
+    },
+    {
+      "path": "src/world/lighting/work.rs",
+      "sha256": "61ef1ace45d011e01c7c93a5b54369d38cc82a52a6e97eb33d6a767d85384a1a"
+    },
+    {
+      "path": "src/world/section.rs",
+      "sha256": "bf6e3671264d728e20952b231315b02968ad847dacefd1e1b00df5db4451ece0"
+    },
+    {
+      "path": "src/world/section/packed.rs",
+      "sha256": "1d47068bf83fba384b09c46cf26bfbcd55e6f8ef84f70cb734505b4a0749babc"
+    },
+    {
+      "path": "src/world/storage/registry.rs",
+      "sha256": "664182a137d6381043ee7be718d9e55c068b644a4f6a595475e7a0847cea8ef9"
+    },
+    {
+      "path": "src/world/storage/registry/lighting.rs",
+      "sha256": "0562b42ed18120e3f9d669b28bbb759fe4d0819db775147e56ecfa0cb7b0fa37"
+    },
+    {
+      "path": "tests/common/lighting_fixture.rs",
+      "sha256": "18250c37939f6a4252d29666576381e657f79cfd6884e971d95b4eb16eab0aff"
+    },
+    {
+      "path": "tests/lighting_benchmark.rs",
+      "sha256": "92293f10fbbc8e19a0cbae704083c257a3adf86c1f8b3fcc826b5a84ec502f77"
+    }
+  ],
+  "workload": {
+    "chunks_per_job": 4,
+    "compared_bytes_per_mode": 1775616,
+    "height": 64,
+    "jobs": 8,
+    "kernel_reservation_per_job": 18875912,
+    "max_in_flight": 8,
+    "min_y": -16,
+    "producer_dense_scratch_bytes": 65536,
+    "selected_grid": {
+      "layers": [
+        "block",
+        "sky"
+      ],
+      "x": [
+        -1,
+        32
+      ],
+      "y": [
+        -32,
+        63
+      ],
+      "z": [
+        -1,
+        32
+      ]
+    },
+    "sha256": "adc170c9203d48f7069cb4ddbc28e9e4db34d4094467c800e22129408779afa2",
+    "slice_units": 64,
+    "source_metadata_allowance_per_job": 16384,
+    "source_section_allowance_per_job": 262144
+  }
+}

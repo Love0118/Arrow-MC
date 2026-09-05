@@ -3,6 +3,9 @@
 //! Game features are added only after their data and execution prerequisites
 //! have independent compatibility evidence against the locked Vanilla version.
 
+#[cfg(test)]
+extern crate self as arrow_mc;
+
 pub mod nbt;
 pub mod runtime;
 pub mod server;

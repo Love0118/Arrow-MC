@@ -10,10 +10,10 @@
 clientbound producer가 선택하는 종류는 **WORLD_SURFACE(1), MOTION_BLOCKING(4), MOTION_BLOCKING_NO_LEAVES(5)**다.
 현재 판정은 옛 `blocksMotion`/Leaves 클래스 검사 대신 configuration의 두 block tag와 air/fluid 정보를 사용한다.
 
-registry format v2는 검증된 configuration tag와 static block ID domain을 결합한다. block별 두 tag bit를 기존 state flag byte에
+heightmap을 도입한 format v2는 검증된 configuration tag와 static block ID domain을 결합했다. 현재 format v3는 이 의미를 유지하며 조명용 binary metadata를 추가한다. block별 두 tag bit를 기존 state flag byte에
 합치므로 추가 state 배열이 없다. 전체35,723상태를 실제 `Heightmap.Types.isOpaque`와 대조했다. block entity type49개의
 이름/ID도 같은 신뢰 문맥에서 제공하지만, block entity의 실제 `getUpdateTag` 행동은 이 데이터로 대신하지 않는다.
-v1은 로컬에 보존하고 현재 loader는 v2의 필수 필드를 검증한다. [준비 명령과 새 manifest](chunk-storage.md)를 함께 갱신했다.
+v1/v2는 과거 로컬 참조로 보존하고 현재 loader는 v3의 다섯 데이터 파일을 검증한다. [준비 명령과 현재 manifest](chunk-storage.md)를 사용한다. 이 schema 갱신만으로 light engine·world/Play 완료를 주장하지 않는다.
 
 `HeightmapSource`는 canonical section을 고정 배열의 참조로 빌린다. palette 복사나 추상적인 ChunkAccess 구현체를 만들지 않는다.
 높이 값은 minY 상대값256개를 padded64-bit words에 보관한다. 높이384에서는9bits/37words, map당296bytes다.

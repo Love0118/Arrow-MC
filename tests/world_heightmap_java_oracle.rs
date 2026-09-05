@@ -548,9 +548,9 @@ fn matches_actual_java_heightmap_operations_and_bound_predicates() {
     );
     let snapshot = env::var_os("ARROW_BLOCK_STATE_SNAPSHOT")
         .map(PathBuf::from)
-        .unwrap_or_else(|| reference.join("bootstrap/26.3-pre-2-block-states-v2"));
+        .unwrap_or_else(|| reference.join("bootstrap/26.3-pre-2-block-states-v3"));
     let manifest = env::var("ARROW_BLOCK_STATE_MANIFEST_SHA256").unwrap_or_else(|_| {
-        "ac40352daeef56d8a273116f9573d1684c0e13c96e5d93e485900b4a021c5557".into()
+        "19c81b4f667315d5981385cbab154e31b4e0ece899d171afb6fad51caa4a4a39".into()
     });
     let config = env::var("ARROW_CONFIGURATION_MANIFEST_SHA256").unwrap_or_else(|_| {
         "105626403604b8a2500181c9c27bd6abeab093df23d3f65db91d16245dc8f198".into()

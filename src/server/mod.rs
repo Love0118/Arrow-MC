@@ -14,6 +14,7 @@ pub mod compression;
 pub mod configuration;
 pub mod configuration_data;
 pub mod crypto;
+pub mod light_snapshot;
 pub mod login;
 pub mod packet;
 pub mod population;

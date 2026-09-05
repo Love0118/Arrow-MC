@@ -16,11 +16,12 @@ pub const PROTOCOL: i32 = 1_073_742_158;
 pub const SOURCE_HASH: [u8; 32] = [0x38; 32];
 pub const CONFIGURATION_HASH: [u8; 32] = [0x57; 32];
 pub const SOURCE_BYTES: u64 = 1234;
-pub const FILES: [&str; 4] = [
+pub const FILES: [&str; 5] = [
     "blocks.json",
     "biomes.json",
     "export-metadata.json",
     "block-entity-types.json",
+    "lighting.bin",
 ];
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
@@ -78,6 +79,14 @@ impl Fixture {
         fs::create_dir(&root).unwrap();
         let source = json!({"sha256":hex(&SOURCE_HASH),"bytes":SOURCE_BYTES});
         write_json(&root.join("blocks.json"), &blocks);
+        // Unrelated fixtures explicitly choose non-emitting, shape-disabled
+        // synthetic materials. Lighting tests replace these with their inputs.
+        let states = blocks["state_count"].as_u64().unwrap() as u32;
+        fs::write(
+            root.join("lighting.bin"),
+            lighting_bytes(&vec![[0; 16]; states as usize], 2, &[14]),
+        )
+        .unwrap();
         write_json(&root.join("biomes.json"), &biomes);
         write_json(
             &root.join("block-entity-types.json"),
@@ -93,7 +102,7 @@ impl Fixture {
         );
         write_json(
             &root.join("manifest.json"),
-            &json!({"format_version":2,"minecraft_version":VERSION,"protocol":PROTOCOL,
+            &json!({"format_version":3,"minecraft_version":VERSION,"protocol":PROTOCOL,
                 "source_jar":source,"configuration_manifest_sha256":hex(&CONFIGURATION_HASH),
                 "selected_packs":[{"id":"vanilla","version":VERSION,
                     "hash_kind":"source_jar_sha256","sha256":hex(&SOURCE_HASH)}],"files":[]}),
@@ -122,6 +131,14 @@ impl Fixture {
     pub fn trust_current_manifest(&mut self) {
         self.expected.manifest_sha256 = digest(&self.root.join("manifest.json"));
     }
+    pub fn edit_lighting(&mut self, edit: impl FnOnce(&mut Vec<u8>)) {
+        let path = self.root.join("lighting.bin");
+        let mut bytes = fs::read(&path).unwrap();
+        edit(&mut bytes);
+        fs::write(path, bytes).unwrap();
+        self.refresh_descriptors();
+        self.trust_current_manifest();
+    }
     pub fn edit(&mut self, file: &str, edit: impl FnOnce(&mut Value)) {
         let path = self.root.join(file);
         let mut value = json_file(&path);
@@ -140,6 +157,17 @@ impl Fixture {
     pub fn rejects(&self, limits: RegistryLoadLimits) -> bool {
         ChunkRegistrySnapshot::load(&self.root, &self.expected, limits).is_err()
     }
+}
+
+pub fn lighting_bytes(materials: &[[u8; 16]], face_count: u32, pairs: &[u8]) -> Vec<u8> {
+    let mut bytes = b"ARLITE3\0".to_vec();
+    bytes.extend_from_slice(&(materials.len() as u32).to_le_bytes());
+    bytes.extend_from_slice(&face_count.to_le_bytes());
+    for material in materials {
+        bytes.extend_from_slice(material);
+    }
+    bytes.extend_from_slice(pairs);
+    bytes
 }
 impl Drop for Fixture {
     fn drop(&mut self) {

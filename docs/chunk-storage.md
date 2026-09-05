@@ -63,7 +63,7 @@ cap은 Arrow의 명시적인 자원 정책이며 바닐라가 허용하는 모�
 
 resident charge는 NBT 누적 요청 allocation과 typed backing capacity를 합친 보수적 값이다.
 registry의 별도 loader admission, 압축 backend 상태·worker stack·제어 객체·allocator·OS 비용은 별도이며 전체 RSS 상한이 아니다.
-실제 공식 registry bundle 558,073 bytes에 적용한 loader admission은 71,433,344 bytes였다. 청크마다 반복하지 않는다.
+초기 v1 registry bundle은558,073bytes/loader admission71,433,344bytes였다. 현재 v3 bundle의 입력 크기는 아래 기록으로 구분한다. registry 비용을 청크마다 반복하지 않는다.
 
 단일 Cargo package·기존 CPU pool을 유지했다. `lz4_flex 0.14.0`의 safe/checked decode와
 `xxhash-rust 0.8.18`의 xxh32만 추가했다. 고정 외부 의존성은 129개이며 루트 프로젝트를 포함한 lock은 130 packages다.
@@ -77,16 +77,20 @@ registry의 별도 loader admission, 압축 backend 상태·worker stack·제어
 ```powershell
 $configHash = '105626403604b8a2500181c9c27bd6abeab093df23d3f65db91d16245dc8f198'
 python tools/prepare_block_state_data.py --configuration-manifest-sha256 $configHash
-$registryHash = 'ac40352daeef56d8a273116f9573d1684c0e13c96e5d93e485900b4a021c5557'
+$registryHash = '19c81b4f667315d5981385cbab154e31b4e0ece899d171afb6fad51caa4a4a39'
 cargo run --locked --release --example inspect_chunk -- `
-  '../Decompile/bootstrap/26.3-pre-2-block-states-v2' $registryHash $configHash `
+  '../Decompile/bootstrap/26.3-pre-2-block-states-v3' $registryHash $configHash `
   'PATH/TO/WORLD/region' 0 0 -64 384
 ```
 
-hash는 configuration tag에 연결된 heightmap predicate와49개 block entity type ID를 추가한 format v2에 해당한다.
-v1 bundle은 로컬에 보존한다. 기존 모든 state ID/air/fluid/property 의미는 유지하며, 실제35723상태의 predicate를 공식 실행과 비교했다.
-v2의5개 파일은총586,229bytes, loader admission은75,037,312bytes다. 이는 요청 예산이며 RSS 측정이 아니다.
-snapshot을 갱신하면 신뢰할 수 있는 준비 결과로 hash를 함께 갱신해야 한다.
+현재 hash는 **format v3**다. configuration-bound heightmap predicate·49개 block entity type ID에 조명용 `lighting.bin`을 추가했다. v1/v2는 과거 로컬 참조로 보존하지만 현재 loader와 oracle 기본 입력은 v3다. Minecraft/DataVersion은 여전히 `26.3-pre-2`/`5018`이며 bundle schema 버전과 혼동하지 않는다.
+
+runtime manifest는 정확히 `blocks.json`, `biomes.json`, `export-metadata.json`, `block-entity-types.json`, `lighting.bin` 다섯 데이터 파일을 승인한다. 현재 이 다섯 파일은1,168,014bytes, manifest13,931bytes를 포함한 입력은1,181,945bytes다. JSON 입력의128배 admission과 binary reader의 비용은 요청 예산이며 실제 RSS 상한이 아니다.
+
+`lighting.bin`589,351bytes는 `ARLITE3\0`, little-endian state/face count, state당16bytes의 emission/dampening/flag/6방향face ID, ordered face-pair bitset으로 구성된다. 현재35,723state·377canonical faces·142,129ordered pair를 포함한다. 자체 `ExportLightingData.java`는 initialized WorldLoader의 공개 state/shape API를 호출하며, descriptor로 통합된 runtime shape variant들에도182,329ordered pair의 동등성을 확인한다. face descriptor 자체는 runtime 데이터 파일이 아니며 provenance에 digest/크기/검증 수만 남긴다.
+
+v3 실제 metadata의 AIR0·VOID_AIR18649·CAVE_AIR18650은 emission0/dampening0/empty-face로 동일하다. available chunk의 높이 밖 lighting lookup에 AIR를 쓰는 근거이며 일반 block identity가 같다는 뜻은 아니다. unavailable chunk는 BEDROCK88의 emission0/dampening15와 별개다. 실제 registry assertion은 `tests/world_lighting_source.rs`의 선택 실행으로 기록한다.
+snapshot을 갱신하면 신뢰할 수 있는 준비 명령의 stdout으로 hash를 함께 갱신해야 한다. 기존 출력 directory는 덮어쓰지 않으므로 재생성 시 `--output`으로 `Decompile/bootstrap` 아래 새 경로를 지정한다. 생성 provenance가 달라지면 같은 논리 데이터라도 manifest hash는 달라질 수 있다. oracle override는 `ARROW_BLOCK_STATE_SNAPSHOT`, `ARROW_BLOCK_STATE_MANIFEST_SHA256`, `ARROW_CONFIGURATION_MANIFEST_SHA256`을 함께 사용한다.
 예제는 파일 읽기만 수행하며 누락 파일을 생성하거나 world를 활성화하지 않는다.
 
 - 실제 공식 JAR: region 52 fixtures의 두 API 104관찰, chunk 72사례, 전체 registry ID/default/state 조회를 대조했다.

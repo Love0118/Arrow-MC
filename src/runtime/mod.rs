@@ -13,8 +13,13 @@ use std::thread::{self, JoinHandle};
 
 use crate::world::section::{self, Registry, SectionCounts};
 
+mod lighting;
 mod packet;
 mod storage;
+pub use lighting::{
+    LightingCompletion, LightingGrowth, LightingJobError, LightingReserveError, LightingTask,
+    MAX_LIGHTING_SLICE_UNITS, PendingLighting,
+};
 pub use packet::{
     LOGIN_KEY_JOB_BUFFER_BYTES, LoginKeyJobError, LoginKeyOutput, LoginKeyTask, PendingLoginKey,
 };
@@ -147,6 +152,7 @@ enum Job {
     Packet(packet::PacketJob),
     VerifyLoginKey(packet::LoginKeyJob),
     DecodeChunk(storage::DecodeChunk),
+    Lighting(lighting::LightingJob),
 }
 
 /// Field order is deliberate: payloads are freed before the lease returns their
@@ -489,6 +495,7 @@ fn work(shared: Arc<Shared>) {
             Job::Packet(job) => packet::run(job, &mut compression, &shared),
             Job::VerifyLoginKey(job) => packet::verify_login_key(job, &shared),
             Job::DecodeChunk(job) => storage::decode_chunk(job, &mut storage_decoder, &shared),
+            Job::Lighting(job) => lighting::run(job, &shared),
         }
     }
 }

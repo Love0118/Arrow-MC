@@ -1,4 +1,24 @@
-# Section 준비의 로컬 측정
+# 청크 기반 기능의 로컬 측정
+
+## 초기 block/sky 조명
+
+Windows x86_64/Ryzen 5 9600X/Rust1.96.0 release에서 8개 독립 영역·총32청크를 같은 입력으로 비교했다.
+세 번씩 순서를 바꿔 측정한 중앙값은 inline198.64ms, pool1 worker230.67ms, 2 workers110.93ms, 4 workers61.68ms였다.
+이 fixture에서 한 worker의 제출·재개 비용은 inline보다 컸고, 네 worker는 약3.22배 빨랐다.
+1,775,616개 block/sky 비교 값이 모든 실행에서 일치했다. 처리량·지연은 전체 서버 TPS나 Vanilla 성능 비교가 아니다.
+
+source/registry 생성·pool 시작·최종 값 비교·최종 결과/pool 해제는 측정 밖이다. engine 생성, 64단위 재제출,
+완료 전달과 임시 kernel 자료구조의 해제는 측정에 포함한다. CPU의 보수적 예약151,230,784bytes와
+worker별2MiB stack은 별도이며 RSS는 측정하지 않았다.
+
+[12개 원시 실행·해시·재현 조건](lighting-windows-summary.json)에 실제 측정 코드와 뒤이은 metadata 설명 수정의 해시를 구분했다.
+고정 local v3 registry와 `ARROW_MC_JAVA_REFERENCE_ROOT`를 준비한 뒤 재현한다.
+
+```powershell
+cargo test --locked --release --test lighting_benchmark -- --ignored --nocapture --test-threads=1
+```
+
+## Section 준비
 
 2026-09-05 Windows x86_64, Ryzen5 9600X(6 cores/12 logical CPUs), Rust1.96.0 release에서 실행했다.
 각 조합마다32,768 sections를3번 준비한54개 실행이며 아래 처리량·p95는 반복의 중앙값이다.

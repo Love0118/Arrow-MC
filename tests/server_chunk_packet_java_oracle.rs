@@ -5,7 +5,7 @@
 
 use arrow_mc::nbt::{Compound, NbtString, Tag};
 use arrow_mc::server::chunk_packet::{
-    self, BlockEntity, ChunkWithLight, HeightmapEntry, LightData, Limits,
+    self, BlockEntity, ChunkWithLight, HeightmapEntry, LightData, LightUpdate, Limits,
 };
 use arrow_mc::world::{heightmap::HeightmapKind, preparation::ChunkAddress};
 use std::{env, fs, io::Read, path::Path, process::Command, time::SystemTime};
@@ -23,6 +23,7 @@ import net.minecraft.network.protocol.game.*;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.entity.BlockEntityType;
+import net.minecraft.world.level.chunk.DataLayer;
 import net.minecraft.world.level.levelgen.Heightmap;
 import java.io.*;
 import java.nio.file.*;
@@ -35,6 +36,13 @@ class ChunkPacketCrossOracle {
     }
     static void blob(DataOutputStream out,byte[] bytes) throws Exception {
         out.writeInt(bytes==null?-1:bytes.length);if(bytes!=null)out.write(bytes);
+    }
+    static byte[] light(DataInputStream in) throws Exception {
+        return switch(in.readInt()) {
+            case 0 -> blob(in);
+            case 1 -> new DataLayer(in.readInt()).copy().getData();
+            default -> throw new AssertionError("unknown light fixture");
+        };
     }
     static CompoundTag typed() {
         var tag=new CompoundTag();
@@ -82,8 +90,8 @@ class ChunkPacketCrossOracle {
         }
         BitSet[] masks=new BitSet[4];for(int i=0;i<4;i++)masks[i]=BitSet.valueOf(blob(in));
         List<byte[]> sky=new ArrayList<>(),block=new ArrayList<>();
-        int skyCount=in.readInt();for(int i=0;i<skyCount;i++)sky.add(blob(in));
-        int blockCount=in.readInt();for(int i=0;i<blockCount;i++)block.add(blob(in));
+        int skyCount=in.readInt();for(int i=0;i<skyCount;i++)sky.add(light(in));
+        int blockCount=in.readInt();for(int i=0;i<blockCount;i++)block.add(light(in));
         var dataConstructor=ClientboundLevelChunkPacketData.class.getDeclaredConstructor(Map.class,byte[].class,List.class);
         dataConstructor.setAccessible(true);
         var data=dataConstructor.newInstance(maps,sections,entities);
@@ -158,7 +166,22 @@ struct ChunkValue {
     sections: Vec<u8>,
     entities: Vec<(u8, i16, u32, u32)>,
     masks: [Vec<u8>; 4],
-    updates: [Vec<Vec<u8>>; 2],
+    updates: [Vec<LightValue>; 2],
+}
+
+#[derive(Clone)]
+enum LightValue {
+    Bytes(Vec<u8>),
+    Uniform(u8),
+}
+
+impl LightValue {
+    fn borrowed(&self) -> LightUpdate<'_> {
+        match self {
+            Self::Bytes(bytes) => LightUpdate::Bytes(bytes),
+            Self::Uniform(value) => LightUpdate::Uniform(*value),
+        }
+    }
 }
 
 fn complex() -> ChunkValue {
@@ -179,7 +202,13 @@ fn complex() -> ChunkValue {
             (0x80, i16::MIN, 7, 1),
         ],
         masks: [vec![0x81, 1, 0], vec![0, 0, 0x80], vec![2], vec![0]],
-        updates: [vec![vec![0x12, 0x34], vec![]], vec![vec![255]]],
+        updates: [
+            vec![
+                LightValue::Bytes(vec![0x12, 0x34]),
+                LightValue::Bytes(vec![]),
+            ],
+            vec![LightValue::Bytes(vec![255])],
+        ],
     }
 }
 
@@ -232,7 +261,16 @@ impl ChunkValue {
         for updates in &self.updates {
             put_int(&mut out, updates.len() as i32);
             for update in updates {
-                put_blob(&mut out, update);
+                match update {
+                    LightValue::Bytes(bytes) => {
+                        put_int(&mut out, 0);
+                        put_blob(&mut out, bytes);
+                    }
+                    LightValue::Uniform(value) => {
+                        put_int(&mut out, 1);
+                        put_int(&mut out, i32::from(*value));
+                    }
+                }
             }
         }
         out
@@ -264,8 +302,8 @@ impl ChunkValue {
                 update_tag: tag.as_ref(),
             })
             .collect();
-        let sky: Vec<_> = self.updates[0].iter().map(Vec::as_slice).collect();
-        let block: Vec<_> = self.updates[1].iter().map(Vec::as_slice).collect();
+        let sky: Vec<_> = self.updates[0].iter().map(LightValue::borrowed).collect();
+        let block: Vec<_> = self.updates[1].iter().map(LightValue::borrowed).collect();
         let packet = ChunkWithLight {
             position: position(self.x, self.z),
             heightmaps: &maps,
@@ -375,7 +413,7 @@ fn cases() -> Vec<Case> {
     chunks.push(("all-heightmap-kinds-empty-arrays".into(), all));
     for length in [0, 1, 2047, 2048, 2049] {
         let mut chunk = ChunkValue::default();
-        chunk.updates[0].push(vec![0xab; length]);
+        chunk.updates[0].push(LightValue::Bytes(vec![0xab; length]));
         chunks.push((format!("sky-array-{length}"), chunk.clone()));
         chunk.updates.swap(0, 1);
         chunks.push((format!("block-array-{length}"), chunk));
@@ -415,6 +453,24 @@ fn cases() -> Vec<Case> {
             },
         ));
     }
+    for value in (0..=15).chain([16, 31, 127, 128, 255]) {
+        for domain in 0..2 {
+            let mut chunk = ChunkValue::default();
+            chunk.updates[domain].push(LightValue::Uniform(value));
+            // Raw updates deliberately include uniform zero as data; a live
+            // producer determines empty masks from DataLayer before this codec.
+            chunk.masks[domain].push(1);
+            chunks.push((format!("uniform-{domain}-{value}"), chunk));
+        }
+    }
+    let mut mixed = complex();
+    mixed.updates[0] = vec![
+        LightValue::Uniform(3),
+        LightValue::Bytes(vec![0x12, 0x34]),
+        LightValue::Uniform(255),
+    ];
+    mixed.updates[1] = vec![LightValue::Bytes(vec![]), LightValue::Uniform(0)];
+    chunks.push(("mixed-uniform-and-byte-updates".into(), mixed));
     for (name, value) in chunks {
         cases.push(Case {
             name,

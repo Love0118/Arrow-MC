@@ -95,6 +95,27 @@ pub struct BlockEntity<'a> {
     pub update_tag: Option<&'a Tag>,
 }
 
+/// One light array without materializing a uniform layer into a temporary Vec.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LightUpdate<'a> {
+    Bytes(&'a [u8]),
+    /// Java DataLayer's low default byte, before its repeated-nibble expansion.
+    /// Ordinary light values are 0..15; the raw representation also preserves
+    /// values such as 16, which materialize as byte 0x10 rather than zero.
+    /// A snapshot producer omits an implicit zero layer into its empty mask;
+    /// Uniform(0) here explicitly encodes a present 2048-byte data array.
+    Uniform(u8),
+}
+
+impl LightUpdate<'_> {
+    fn len(self) -> usize {
+        match self {
+            Self::Bytes(bytes) => bytes.len(),
+            Self::Uniform(_) => MAX_LIGHT_UPDATE_BYTES,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LightData<'a> {
     /// BitSet bytes: low-order bits/bytes first; trailing zero bytes are omitted.
@@ -107,8 +128,8 @@ pub struct LightData<'a> {
     /// Live DataLayer production requires real layer state and normally emits
     /// 2048 bytes. Allocated all-zero data is different from an empty DataLayer;
     /// this encoder does not infer layer absence or emptiness from byte content.
-    pub sky_updates: &'a [&'a [u8]],
-    pub block_updates: &'a [&'a [u8]],
+    pub sky_updates: &'a [LightUpdate<'a>],
+    pub block_updates: &'a [LightUpdate<'a>],
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -266,7 +287,13 @@ pub fn encode(
     for updates in [packet.light.sky_updates, packet.light.block_updates] {
         put_count(&mut output, updates.len());
         for update in updates {
-            put_array(&mut output, update);
+            match update {
+                LightUpdate::Bytes(bytes) => put_array(&mut output, bytes),
+                LightUpdate::Uniform(value) => {
+                    put_count(&mut output, MAX_LIGHT_UPDATE_BYTES);
+                    output.resize(output.len() + MAX_LIGHT_UPDATE_BYTES, value | (value << 4));
+                }
+            }
         }
     }
     debug_assert_eq!(output.len(), length);

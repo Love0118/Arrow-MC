@@ -7,10 +7,12 @@ No artifacts are downloaded and the dedicated server is never launched.
 import argparse
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
 import shutil
+import struct
 import subprocess
 import tempfile
 import zipfile
@@ -21,7 +23,10 @@ from prepare_configuration_data import (DECOMPILE, LOCK_PATH, REPOSITORY, digest
                                         verified_artifacts, write_json)
 
 GENERATOR = REPOSITORY / "tools" / "oracles" / "ExportBlockStateData.java"
+LIGHTING_GENERATOR = REPOSITORY / "tools" / "oracles" / "ExportLightingData.java"
 JSON_FILES = ("blocks.json", "biomes.json", "block-entity-types.json", "export-metadata.json")
+OUTPUT_FILES = (*JSON_FILES, "lighting.bin")
+LIGHTING_MAGIC = b"ARLITE3\0"
 HEIGHTMAP_TAGS = ("minecraft:blocks_motion_in_heightmap",
                  "minecraft:blocks_motion_in_heightmap_no_leaves")
 SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -207,13 +212,99 @@ def validate_export(root, version, protocol, source_jar):
     return data
 
 
+def validate_lighting(root, version, protocol, source_jar, expected_states):
+    expected_files = {"lighting.bin", "lighting-export-metadata.json", "lighting-face-descriptors.json"}
+    if {path.name for path in root.iterdir()} != expected_files:
+        raise ValueError("Unexpected lighting export files")
+    for path in root.iterdir():
+        if path.is_symlink() or path.resolve() != path or not path.is_file():
+            raise ValueError("Unsafe lighting export path")
+    metadata = read_json(root / "lighting-export-metadata.json")
+    if (not isinstance(metadata, dict) or metadata.get("minecraft_version") != version
+            or type(metadata.get("protocol")) is not int or metadata["protocol"] != protocol
+            or metadata.get("source_jar") != source_jar or metadata.get("selected_pack_ids") != ["vanilla"]
+            or type(metadata.get("state_count")) is not int or metadata["state_count"] != expected_states):
+        raise ValueError("Lighting metadata differs from the pinned initialized configuration")
+    contents = (root / "lighting.bin").read_bytes()
+    if len(contents) < 16 or contents[:8] != LIGHTING_MAGIC:
+        raise ValueError("Invalid lighting binary header")
+    states, faces = struct.unpack_from("<II", contents, 8)
+    pair_bits = faces * faces
+    pair_bytes = (pair_bits + 7) // 8
+    material_bytes = states * 16
+    if (states != expected_states or not 2 <= faces <= 65536
+            or type(metadata.get("face_count")) is not int or metadata["face_count"] != faces
+            or metadata.get("material_bytes") != material_bytes or metadata.get("pair_bytes") != pair_bytes
+            or len(contents) != 16 + material_bytes + pair_bytes):
+        raise ValueError("Lighting binary counts or length are inconsistent")
+    for index in range(states):
+        emission, dampening, flags, reserved, *ids = struct.unpack_from("<BBBB6H", contents, 16 + index * 16)
+        if emission > 15 or dampening > 15 or flags > 3 or reserved or any(face >= faces for face in ids):
+            raise ValueError("Invalid lighting material value or cached face ID")
+    pairs = contents[16 + material_bytes:]
+    if pair_bits % 8 and pairs[-1] >> (pair_bits % 8):
+        raise ValueError("Nonzero lighting pair padding bits")
+    def occludes(first, second):
+        bit = first * faces + second
+        return bool(pairs[bit // 8] & (1 << (bit % 8)))
+    if occludes(0, 0) or any(not occludes(1, face) or not occludes(face, 1) for face in range(faces)):
+        raise ValueError("Invalid canonical empty/full face pair results")
+    if metadata.get("occluding_pairs") != sum(byte.bit_count() for byte in pairs):
+        raise ValueError("Lighting pair result count mismatch")
+    variants = metadata.get("runtime_variant_count")
+    if (type(variants) is not int or variants < faces
+            or metadata.get("runtime_variant_ordered_pairs_verified") != variants * variants):
+        raise ValueError("Missing lighting runtime-variant equivalence proof")
+    descriptors = read_json(root / "lighting-face-descriptors.json")
+    if not isinstance(descriptors, list) or len(descriptors) != faces:
+        raise ValueError("Lighting face descriptor count mismatch")
+    digest = hashlib.sha256()
+    descriptor_bytes = 0
+    for face_id, descriptor in enumerate(descriptors):
+        if not isinstance(descriptor, dict) or set(descriptor) != {"coordinate_raw_bits", "occupied_cells_hex"}:
+            raise ValueError("Invalid lighting face descriptor")
+        axes = descriptor["coordinate_raw_bits"]
+        if not isinstance(axes, list) or len(axes) != 3:
+            raise ValueError("Invalid lighting coordinate axes")
+        cells = 1
+        for axis in axes:
+            if not isinstance(axis, list) or not axis:
+                raise ValueError("Missing lighting coordinate domain")
+            digest.update(struct.pack("<I", len(axis)))
+            descriptor_bytes += 4 + 8 * len(axis)
+            cells *= len(axis) - 1
+            previous = None
+            for raw in axis:
+                if not isinstance(raw, str) or not raw.isascii() or not raw.isdecimal() or not 0 <= int(raw) <= 0xFFFFFFFFFFFFFFFF:
+                    raise ValueError("Invalid raw lighting coordinate bits")
+                encoded = struct.pack("<Q", int(raw))
+                coordinate = struct.unpack("<d", encoded)[0]
+                if not math.isfinite(coordinate) or previous is not None and coordinate <= previous:
+                    raise ValueError("Lighting coordinates must be finite and strictly increasing")
+                previous = coordinate
+                digest.update(encoded)
+        occupied = bytes.fromhex(descriptor["occupied_cells_hex"])
+        if len(occupied) != (cells + 7) // 8 or cells % 8 and occupied[-1] >> (cells % 8):
+            raise ValueError("Invalid lighting descriptor occupancy bitmap")
+        if (face_id == 0 and (axes != [["0"], ["0"], ["0"]] or occupied)
+                or face_id == 1 and (axes != [["0", "4607182418800017408"]] * 3 or occupied != b"\x01")):
+            raise ValueError("Lighting face IDs zero and one must be canonical empty and full")
+        digest.update(occupied)
+        descriptor_bytes += len(occupied)
+    if (metadata.get("descriptor_binary_sha256") != digest.hexdigest()
+            or metadata.get("descriptor_binary_bytes") != descriptor_bytes):
+        raise ValueError("Lighting descriptor audit digest mismatch")
+    return {"sha256": digest.hexdigest(), "bytes": descriptor_bytes, "face_count": faces,
+            "runtime_variant_ordered_pairs_verified": variants * variants}
+
+
 def prepare(configuration_manifest_sha256, decompile_root=DECOMPILE, version=None,
             java="java", output=None, configuration_root=None):
     lock = read_json(LOCK_PATH)
     version = version or lock["minecraft"]["id"]
     if version != lock["minecraft"]["id"]:
         raise ValueError("Requested version must match references.lock.json")
-    root, bootstrap, destination = local_output(decompile_root, version + "-block-states-v2", output)
+    root, bootstrap, destination = local_output(decompile_root, version + "-block-states-v3", output)
     config_root = Path(configuration_root).absolute() if configuration_root else bootstrap / version
     if (config_root.resolve() != config_root or not config_root.is_dir()
             or config_root == bootstrap or not config_root.is_relative_to(bootstrap)
@@ -227,6 +318,8 @@ def prepare(configuration_manifest_sha256, decompile_root=DECOMPILE, version=Non
                                "sha256": digest_file(GENERATOR)}
     provenance["preparer"] = {"path": "tools/prepare_block_state_data.py",
                               "sha256": digest_file(Path(__file__))}
+    provenance["lighting_generator"] = {"path": "tools/oracles/ExportLightingData.java",
+                                        "sha256": digest_file(LIGHTING_GENERATOR)}
     stage = Path(tempfile.mkdtemp(prefix=".block-states-", dir=bootstrap)).resolve()
     try:
         export = stage / "export"
@@ -240,20 +333,27 @@ def prepare(configuration_manifest_sha256, decompile_root=DECOMPILE, version=Non
             raise ValueError("Exported block names differ from the authenticated static block domain")
         for block in blocks["blocks"]:
             block["heightmap_tags"] = heightmap_tags[block["id"]]
+        lighting = stage / "lighting"
+        lighting.mkdir()
+        lighting_command = [java, "-Xmx2G", "-cp", command[3], str(LIGHTING_GENERATOR), str(lighting)]
+        provenance["lighting_command"] = lighting_command
+        subprocess.run(lighting_command, cwd=stage, check=True)
+        provenance["lighting_faces"] = validate_lighting(lighting, version, protocol, source_jar, blocks["state_count"])
+        (lighting / "lighting.bin").rename(export / "lighting.bin")
         # Compact the large state arrays so consumer admission is charged for useful data.
         (export / "blocks.json").write_text(
             json.dumps(blocks, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
         write_json(export / "biomes.json", biomes)
         write_json(export / "block-entity-types.json", block_entities)
         manifest = {
-            "format_version": 2, "minecraft_version": version, "protocol": protocol,
+            "format_version": 3, "minecraft_version": version, "protocol": protocol,
             "source_jar": source_jar, "selected_packs": selected_packs(version, source_jar),
             "configuration_manifest_sha256": configuration_manifest_sha256,
-            "files": [file_record(export, export / name) for name in sorted(JSON_FILES)],
+            "files": [file_record(export, export / name) for name in sorted(OUTPUT_FILES)],
             "provenance": provenance,
         }
         write_json(export / "manifest.json", manifest)
-        local_output(root, version + "-block-states-v2", destination)
+        local_output(root, version + "-block-states-v3", destination)
         destination.parent.mkdir(parents=True, exist_ok=True)
         export.rename(destination)
         return destination
