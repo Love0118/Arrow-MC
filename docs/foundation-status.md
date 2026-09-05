@@ -29,7 +29,9 @@ chunk 변경·병렬 결과 공개에 작업을 분산했다. 압축 기본12개
 외부 manifest hash 없이 자체 descriptor만 검사하던 문제를 독립 리뷰에서 재현해 수정했으며,
 tags 삭제·core payload 변조 후 자체 hash를 재작성한 두 사례가 원래 신뢰값에서 거부됨을 확인했다.
 두 리뷰 역할의 현재 범위 차단 사항은 해결됐다. Python32개 중30개 통과, 선택 Unicode·Windows symlink 권한2개는 제외했다.
-최종 변경 커밋의 네 native CI 판정은 후속 기록으로 구분한다.
+구현 commit `d5730fc`의 [CI run33955242307](https://github.com/Love0118/Arrow-MC/actions/runs/33955242307)에서
+네 native host 모두 architecture·format·Clippy·debug235/release235(선택9제외)를 통과했다.
+Python tooling·Unicode 재생성·Linux 의존성 고지 검사도 통과했다. 정확한 commit의 job 결과와 test count를 로컬 리뷰 자료에 보존했다.
 
 현재 Windows 단일 server build 측정은 빈 target/따뜻한 registry·OS cache에서 debug 최초8.367s,
 변경 없음0.080s, server module timestamp 재컴파일0.991s, release 최초8.887s였다.
