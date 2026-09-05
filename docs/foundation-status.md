@@ -101,7 +101,11 @@ debug/release 각각630통과·0실패·37선택제외와 format·Clippy·toolin
 16개 잘못된 저장 배열 길이도 실제 Java/Rust에서 거부했다. Java의138개 phase 관찰은 Rust 내부 callback timing 검증으로 확대하지 않는다.
 두 독립 리뷰와 실제 restore→resident 이전→packet→한 CPU 슬롯의 TCP 회귀를 통과했다.
 
-로컬 전체 debug/release 각각655통과·38선택제외, strict Clippy·format을 확인했다. 이 source의 native CI는 별도로 기록한다.
+로컬 전체 debug/release 각각655통과·38선택제외, strict Clippy·format을 확인했다.
+source `c9bdb94165af6478579af0c6c06bf3b90f8628f7`를 beta에 전달했고,
+[CI33976637563](https://github.com/Love0118/Arrow-MC/actions/runs/33976637563)에서 네 native 플랫폼 모두
+debug/release 각각655통과·0실패·38선택제외와 format·Clippy·tooling·의존성 고지를 통과했다.
+원본·집계는 로컬 `Roadmap/reviews/saved-lighting-ci-c9bdb94*`에 있다.
 대표 resident 시험의 현재 CPU 예약은8,392,608bytes, resident allowance는237,484bytes다.
 게임용 visible과 packet용 데이터가 참조하는 같은 layer도 보수적으로 각각 청구하므로 e0b4593의120,156bytes와 구분한다.
 실제 layer payload를 두 번 복사한 값이나 RSS 측정은 아니다.

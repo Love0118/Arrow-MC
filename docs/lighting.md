@@ -6,7 +6,9 @@
 callback dispatcher·1,000-task marker·live chunk status/flag·ticket·Play 연결은 아직 완료하지 않았다.**
 
 커널·초기 통합의 `5e14ec7`와 resident 예산 이전의 `e0b4593`은 각각 당시 네 native 플랫폼 검증을 마쳤다.
-현재 저장 복원·queued-first snapshot 배치는 실제 Java 대조와 독립 검수를 진행했으며 전체/native 결과는 별도로 기록한다.
+저장 복원·queued-first snapshot은 `c9bdb94`로 전달했다. 실제 Java 대조와 두 독립 검수 후
+[CI33976637563](https://github.com/Love0118/Arrow-MC/actions/runs/33976637563)에서 네 native 플랫폼 모두
+debug/release 각각655통과·38선택제외와 format·Clippy·tooling을 확인했다.
 배치별 결과는 [구현 상태](foundation-status.md)에 기록한다.
 
 ## 책임과 호출 경로
@@ -221,9 +223,9 @@ resident 이전의 `e0b45930dca1da4ac9d66b6b37cf7cfe5369e692`는 [CI33974887856]
 | 초기 work/owner 통합 | work8·owner7, source metadata 선예약·동일 domain/revision·실제 canonical→공용 CPU→packet→TCP 검증, 두 독립 리뷰 통과 | 전체 world status·Play coordinator 미구현 |
 | 공용 CPU lifecycle | 일반5·결정적 gate4개, constructed/running·queued·ready 취소와 wait 재개, 예산·작업 보존·worker 증설 검증, 두 독립 리뷰 통과 | 64단위는 wall-clock 지연 상한이 아님 |
 | 초기 block/sky 조합 | 실제 초기화한 Java `LevelLightEngine`의 2영역·216개 전체 layer·884,736 nibble을 무제한/7단위 실행 각각과 대조. 7단위 재개4,656회. Debug·release와 독립 재실행 통과 | fresh initial relighting이며 저장 light 복원·Threaded callback 시험 아님 |
-| 후속 resident 비용 helper | `world_lighting_retention`5개와 내부 arithmetic3개 debug/release 통과. uniform/allocated-zero·COW·빈 snapshot·sky top·spare capacity·같은 Arc 중복·overflow·오래된 source 수명 검증. 두 독립 검수 통과 | helper fixture의 `CompletedLighting`120,084bytes는 runtime resident wrapper 등의72bytes를 제외한 값. 별도 설정 최대37,750,312bytes와 source2,456bytes는 위 CPU fixture와 합치지 않음 |
+| 이전 resident 비용 helper | e0b4593의 `world_lighting_retention`5개와 내부 arithmetic3개 debug/release 통과. uniform/allocated-zero·COW·빈 snapshot·sky top·spare capacity·같은 Arc 중복·overflow·오래된 source 수명 검증. 두 독립 검수 통과 | 당시 helper의 `CompletedLighting`120,084bytes는 runtime wrapper 등의72bytes를 제외한 값. 현재 추가된 data snapshot의 비용이 아님 |
 | 이전 resident runtime | `runtime_resident_lighting`6개와 resident ledger overflow 내부1개, e0b4593에서 검증. 완료본 이전 후 CPU slot/bytes 반환, 목적지 실패·재시도·block-only/sky 결과의 상주 합계 | 당시8,392,584→120,156bytes는 새 data snapshot을 포함하지 않음. RSS·속도 측정 아님 |
-| 후속 resident owner·TCP | `world_lighting_owner`10개 로컬 통과. 실제 Anvil→공용 CPU→resident→packet→queue→TCP를 `max_jobs = 1`로 실행. accept 직후와 packet write 뒤 CPU slot/bytes0, reader/write 동안 resident1개·정확한 charge 유지, cancel 뒤0 | owner/status·Play 완료 아님. 한 byte 부족 실패의 동일 완료본 재시도·공유 예산 압력·unload 후 stale domain 수명도 검증 |
+| 이전 resident owner·TCP | e0b4593의 `world_lighting_owner`10개 통과. 실제 Anvil→공용 CPU→resident→packet→queue→TCP를 `max_jobs = 1`로 실행. accept 직후와 packet write 뒤 CPU slot/bytes0, reader/write 동안 resident1개·정확한 charge 유지, cancel 뒤0 | owner/status·Play 완료 아님. 한 byte 부족 실패의 동일 완료본 재시도·공유 예산 압력·unload 후 stale domain 수명도 검증 |
 | 저장 복원 실제 Java | 23 transaction을 무제한/7단위로 대조. visible13,148,160nibble, queued-first1,724layer/7,061,504nibble,1,865재개. 단일22개와 서로 다른 reuse 조건의 이웃2청크1개. malformed array16개 |138개 Java phase 관측은 Rust private phase와 직접 대조한 수치가 아님. 일반 Threaded dispatcher·임의 다중 청크 상태 조합·Play 동등성 아님 |
 
 원문을 읽은 뒤 독립 Rust 자료구조·API와 공개 Java API observer를 작성했다. Java/Pumpkin 본문 복사 또는 clean-room 작업이라고 주장하지 않는다.
