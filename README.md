@@ -1,9 +1,10 @@
 # Arrow MC
 
-Minecraft Java Edition **26.3**의 공식 서버 동작을 기준으로 처음부터 작성하는 Rust 서버 프로젝트입니다.
-Java 디컴파일본을 동작 기준으로 삼고, Pumpkin에서는 검증한 로직과 최적화만 선별적으로 참고합니다.
+Minecraft Java Edition **26.3**의 공식 서버를 소스로 조사하면서 **독립적으로 설계하는 Rust 서버 구현체**입니다.
+Java 디컴파일본과 실제 실행 결과를 동작 기준으로 삼고, Pumpkin에서는 검증한 구현 아이디어와 최적화를 선별적으로 참고합니다.
+출처와 코드 재사용 조건은 [출처 정책](docs/provenance-policy.md)에 기록합니다.
 
-현재 단계는 **참조 소스 준비와 1차 최적화 조사 완료**입니다. Rust 서버 런타임과 게임 기능은 아직 구현하지 않았습니다.
+현재 단계는 **전체 항목 조사와 데이터 기반 구현 진행 중**입니다. Rust NBT binary·VarInt/VarLong codec이 있으며 서버 런타임과 게임 기능은 아직 없습니다.
 [설계 기준](docs/architecture.md)과 [Vanilla/Pumpkin 비교·최적화 계획](docs/optimization-plan.md)에 지원 범위,
 동기·비동기 실행 경계, 가져올 최적화와 직접 가져오지 않을 동작을 정리했습니다.
 
@@ -11,6 +12,27 @@ Java 디컴파일본을 동작 기준으로 삼고, Pumpkin에서는 검증한 �
 청크 로딩과 tick의 병렬 처리량·지연 개선을 우선하며, 이를 위한 **측정 가능하고 제한된 RAM 증가를 허용**합니다.
 불필요한 추상화와 빌드 의존성을 줄이고, 바닐라 패킷 순서·게임 의미·view-distance 2..32 전체 범위를 유지합니다.
 tick 병렬화는 초기에 단일 스레드 대조 경로와 함께 개발할 핵심 항목입니다.
+
+아이템 동작은 NBT·registry·typed component 122종과 중첩 stack 데이터 기반을 모두 검증한 뒤 구현합니다.
+[전체 구현 계약](docs/implementation-contract.md)에 선행 게이트와 1~3명 독립 리뷰어 운영 원칙이 있습니다.
+
+## Rust 기반 개발
+
+Rust `1.96.0`, 단일 library package, 외부 Rust dependency 0개로 시작합니다.
+`src/nbt`는 모든 binary tag·Java modified UTF-8·mixed list·named/network root·자원 제한을 처리합니다.
+`src/wire`는 VarInt/VarLong을 처리합니다. SNBT·NBT path/ops·압축·registry/component와 item gameplay는 아직 구현 전입니다.
+로컬 디코더 메모리 예산은 요청한 backing allocation의 누계이며 RSS 상한을 뜻하지 않습니다. writer는 추가 출력 길이를 제한합니다.
+
+```powershell
+cargo test --locked --all-targets
+cargo clippy --locked --all-targets -- -D warnings
+cargo fmt --all --check
+$env:ARROW_MC_JAVA_REFERENCE_ROOT = 'E:\projects\Arrow MC\Decompile'
+cargo test --test wire_java_oracle -- --ignored --nocapture
+```
+
+마지막 명령은 로컬 공식 JAR의 클래스와 실제 대조합니다. 일반 테스트에서는 명시적으로 ignored이며 별도 실행 결과만 대조 성공 근거로 사용합니다.
+CI는 네 native target에서 foundation debug/release 테스트를 실행합니다. 이 CI의 통과는 완성된 서버의 플랫폼 검증을 뜻하지 않습니다.
 
 ## 작업 공간
 
@@ -32,6 +54,19 @@ Git 명령은 내부 `Arrow MC`에서 실행합니다. 형제 디렉터리 세 �
 - Vineflower: `1.12.0`.
 - Pumpkin: `8d0d0d311778cb0aecb5fc957d571a38f286fda0`, submodule 포함.
 - 출처와 검증 결과: [기준 보고서](docs/reference-baseline.md), [버전 잠금 파일](references.lock.json).
+
+## 전체 요소와 의존성 목록
+
+형제 `Roadmap/catalog/`에 source/resource/registry/packet 발견 목록과 데이터·아이템, 월드·틱, 서버·게임플레이 catalog를 둡니다.
+공식 보고서의 122 components·1,658 items·1,286 blocks·161 entities를 포함하며 파일 존재와 실제 구현 완료를 구별합니다.
+
+```powershell
+python tools/generate_vanilla_inventory.py --refresh-reports
+python tools/generate_vanilla_inventory.py --check
+```
+
+공식 데이터 생성기를 실행하며 게임 서버를 시작하지 않습니다. JAR과 보고서의 버전·해시를 연결하고 5,035 Java·9,893 bundled resources·
+95 built-in registries/7,053 entries·259 packets를 추적합니다. 상세 component/item/command/entity 분류는 catalog의 별도 검증 자료와 함께 사용합니다.
 
 ## 재현
 

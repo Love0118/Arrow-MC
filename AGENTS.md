@@ -62,7 +62,28 @@ Repository documentation is under `docs/`; the active task backlog is in the sib
 - Read `docs/optimization-plan.md` and `docs/architecture.md` before choosing an optimization.
   Research candidates are not implemented or benchmark-proven behavior.
 
+## Code provenance
+
+- Follow `docs/provenance-policy.md`. Do not mechanically translate or copy Vanilla method bodies,
+  comments or distinctive code expression. Design Rust code independently from behavioral requirements
+  and oracle tests, recording any source exposure and references honestly.
+- Do not call source-exposed work clean-room or claim that code review guarantees legal clearance.
+- Direct Pumpkin/other code reuse requires resolved file/dependency license terms, attribution,
+  source obligations and project compatibility before inclusion. Merely linking upstream is insufficient.
+- Keep official JARs, decompiled Java, assets and bulk Mojang-generated data in local references;
+  audit distribution contents and code provenance before each public delivery.
+
 ## Verification and delivery
+
+- Maintain 1-3 independent review agents during active implementation; use implementation agents as well.
+  Default roles: correctness reviewer and optimization/abstraction/build-cost reviewer. Reuse these roles across batches.
+- Read `docs/implementation-contract.md`. Item gameplay must wait for complete NBT/registry/codec/component
+  foundations and passive stack data. Mutually recursive components and stack data are co-implemented as
+  a foundation group; this does not authorize early item behavior stubs.
+- Track every Vanilla server feature and discovered source/resource/registry entry in the sibling Roadmap.
+  Never mark a family complete from a sample, type declarations, self-roundtrips, or source presence alone.
+- The persistent goal is full Vanilla functionality and all requested performance/platform/review constraints.
+  Keep it active while any required feature or verification is incomplete.
 
 - Read `C:\Users\Jaeyun\.codex\RTK.md` before repository work; prefer supported RTK filters.
 - Tooling tests: `python -m unittest discover -s tools/tests -v`.

@@ -1,0 +1,13 @@
+[package]
+name = "arrow-mc"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+publish = false
+description = "Minecraft Java Edition server foundations for Arrow MC"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"
