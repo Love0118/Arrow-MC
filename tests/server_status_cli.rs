@@ -6,12 +6,15 @@ use std::{
 };
 
 fn command() -> Command {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_arrow-mc"));
+    let command = Command::new(env!("CARGO_BIN_EXE_arrow-mc"));
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
+        let mut command = command;
         command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW for the test helper.
+        command
     }
+    #[cfg(not(windows))]
     command
 }
 
