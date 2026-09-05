@@ -22,8 +22,8 @@ Windows x86_64, Rust1.96.0/Java25에서 다음을 실행했다.
 
 | 검증 | 결과와 범위 |
 | --- | --- |
-| `cargo test --locked --all-targets` | 66통과, live Java oracle3개는 명시적 ignored |
-| `cargo test --locked --release --all-targets --timings` | 동일66통과. foundation release 검증이며 서버 부하 benchmark 아님 |
+| `cargo test --locked --all-targets` | 70통과, live Java oracle3개는 명시적 ignored |
+| `cargo test --locked --release --all-targets --timings` | 동일70통과. foundation release 검증이며 서버 부하 benchmark 아님 |
 | `cargo test --locked --test wire_java_oracle -- --ignored --nocapture` | 공식26.3-pre-2 Java VarInt/VarLong15,420사례 실제 비교 통과 |
 | SNBT frozen oracle | 실제 JVM 관찰7,018개: parser7,005개의 typed value·cursor·오류 key/인수, compact2,063개, 깊이 정책6개 통과; 항목 간 중복 있음 |
 | SNBT live writer oracle | Java float71,168개와 pretty38개 실제 비교 통과 |
@@ -48,7 +48,10 @@ Linux x86_64·Windows x86_64와 tooling이 통과했지만 Linux/macOS ARM64의 
 writer도 내부 실패를 offset·kind만 갖는 작은 값으로 변경하고 공개 오류는 경계에서 한 번 구성하도록 수정했다.
 Windows debug assembly에서 compact 재귀 frame은3,768→600bytes, pretty compound 재귀 경로는3,848→1,160bytes로 감소했다.
 이는 ARM 실행 검증을 대신하지 않으며, parsing·writing·drop을 분리한 기본 stack 회귀 검증을 추가했다.
-수정 전후91,000개 출력·오류·rollback 비교가 일치했다. native 수정 검증 결과는 다음 CI 기록으로 구분한다.
+수정 전후91,000개 출력·오류·rollback 비교가 일치했다.
+수정 commit `397bb04`의 [CI run 33950454773](https://github.com/Love0118/Arrow-MC/actions/runs/33950454773)은
+네 native host 전부에서 architecture 확인·format·Clippy·debug70·release70 테스트와 tooling을 통과했다.
+Linux/macOS ARM64의 512단계 parsing·compact/pretty writing·drop 및 513 거부·실패 rollback을 실제 native host에서 확인했다.
 
 ## 현재 library 빌드 비용
 
@@ -57,6 +60,10 @@ Cargo process 전체 경과 시간은 debug library 최초0.901s, 변경 없음0
 재컴파일0.324s, release library 최초0.887s였다. OS file cache는 비우지 않았다.
 debug/release `rlib`는 각각8,083,862/3,208,740bytes였다. 이는 배포 executable 크기나 build peak RAM 측정이 아니다.
 서버 코드·다중 플랫폼·실제 코드 변경의 빌드 비용을 대표하지 않으며 단일 측정 원본은 로컬 `Roadmap/reviews/snbt-build-cost.json`에 있다.
+
+writer stack 수정 `397bb04`에서 같은 절차로 다시 측정한 값은 debug 최초0.919s, 변경 없음0.056s,
+timestamp 재컴파일0.349s, release 최초0.881s다. debug/release `rlib`는8,116,878/3,208,722bytes였다.
+이는 수정 후 측정값이며 단일 표본 간 차이로 성능 향상·회귀를 결론 내리지 않는다. 원본은 `Roadmap/reviews/snbt-build-cost-final.json`이다.
 
 ## 남은 범위와 의도한 API 경계
 
