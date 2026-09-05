@@ -56,6 +56,8 @@ Pumpkin 참조 커밋에는 GPL-3.0 라이선스 문서가 있다. 실제 코드
 | `src/nbt/numeric.rs`, `predicate.rs`, `path/*` | 현재 NumericTag·NbtUtils·NbtPathArgument와 실제 API 관찰에서 규칙을 확인한 후 반복형 비교·소유 참조 BFS·공유 예산·오류/해제를 독립 설계 | 원문 본문·주석 복사나 범용 Java class hierarchy 도입 없음 | Java 객체 별칭·unchecked 예외·End binary 출력과 다른 경계를 명시하며 전체 서버 소비자 동등성은 별도 검증 |
 | `src/snbt/*` | 현재 grammar·직접 만든 JVM 사례를 확인하여 구체적인 UTF-16 parser, 작은 오류 메타데이터와 formatter를 별도 작성 | parser framework·Java 본문 복사·외부 Rust dependency 없음 | source-guided 구현이며 모든 새 소비자의 동작 검증을 대신하지 않음 |
 | `src/unicode_names/*`, `third_party/unicode/*` | 공식 Unicode16 데이터에서 자체 생성기가 compact binary를 생성, 독립 lookup을 Java25와 대조 | Unicode 데이터는 Unicode License v3로 포함하며 전체 고지·URL·checksum 보존 | JDK 소스·table·oracle 출력은 생성 입력 아님. 바이너리 배포 시 고지 동봉 필요 |
+| `src/server/*`, `src/main.rs` | 공식 packet/listener/UTF 규칙·실제 JVM codec 관찰을 바탕으로 단일 socket owner와 연결 제한·종료를 별도 설계 | Java/Pumpkin 본문 복사 없음. Tokio/serde_json 사용, 고정 의존성 고지 수집 | status/ping만 검증. 인증·play 소비자와 전체 게임 서버 동등성은 미완료 |
+| `src/world/*`, `src/runtime/*` | PalettedContainer/SimpleBitStorage/section wire 규칙·실행 관찰에 근거한 compact enum·packed words·사전 할당 kernel과 fixed CPU worker·permit 수명 별도 설계 | 원문 본문 복사나 Pumpkin pool 직접 도입 없음. kernel/pool 추가 dependency 없음 | 일부 비정규 데이터 경계 차이 명시. 실제 world registry·revision 적용·게임 tick은 후속 검증 |
 | `tests/*` | 직접 작성한 작은 binary 사례 및 로컬 공식 API 호출 oracle | JAR·디컴파일 파일을 저장하지 않음. fixture는 작은 입력·관찰 결과 | 일치 검사는 정확성 근거이며 저작권 허가를 대신하지 않음 |
 
 코드 리뷰는 복사 여부·표현·의존성을 검토하는 공학적 절차다. 프로젝트 전체의 법적 적합성을 보증하는 절차로 표시하지 않는다.

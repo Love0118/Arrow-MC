@@ -84,6 +84,10 @@ Repository documentation is under `docs/`; the active task backlog is in the sib
   Never mark a family complete from a sample, type declarations, self-roundtrips, or source presence alone.
 - The persistent goal is full Vanilla functionality and all requested performance/platform/review constraints.
   Keep it active while any required feature or verification is incomplete.
+- The user explicitly corrected excessive focus on NBT. Keep server connection, chunk/tick ownership,
+  and parallel execution work moving alongside prerequisite data work. Do not expand NBT research/tests
+  indefinitely or make the item-data gate a prerequisite for unrelated status/network/runtime work.
+  Close each reviewed foundation batch, then resume it when a concrete consumer requires the next portion.
 
 - Read `C:\Users\Jaeyun\.codex\RTK.md` before repository work; prefer supported RTK filters.
 - Tooling tests: `python -m unittest discover -s tools/tests -v`.

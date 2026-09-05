@@ -6,6 +6,10 @@ rust-version = "1.96"
 publish = false
 description = "Minecraft Java Edition server foundations for Arrow MC"
 
+[dependencies]
+serde_json = "=1.0.151"
+tokio = { version = "=1.53.1", default-features = false, features = ["rt-multi-thread", "net", "io-util", "time", "sync", "signal", "macros"] }
+
 [lints.rust]
 unsafe_code = "forbid"
 

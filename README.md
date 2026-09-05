@@ -4,7 +4,9 @@ Minecraft Java Edition **26.3**의 공식 서버를 소스로 조사하면서 **
 Java 디컴파일본과 실제 실행 결과를 동작 기준으로 삼고, Pumpkin에서는 검증한 구현 아이디어와 최적화를 선별적으로 참고합니다.
 출처와 코드 재사용 조건은 [출처 정책](docs/provenance-policy.md)에 기록합니다.
 
-현재 단계는 **전체 항목 조사와 데이터 기반 구현 진행 중**입니다. Rust NBT binary·SNBT·VarInt/VarLong codec이 있으며 서버 런타임과 게임 기능은 아직 없습니다.
+현재 단계는 **실행 가능한 서버와 기반 기능 구현 진행 중**입니다. Java 서버 목록의 status/ping에 실제 TCP로 응답합니다.
+청크 section palette/packed storage와 제한된 CPU worker의 병렬 section 준비도 구현했습니다.
+인증·로그인 완료·플레이·월드 생성·게임 tick은 아직 구현하지 않았습니다.
 [설계 기준](docs/architecture.md)과 [Vanilla/Pumpkin 비교·최적화 계획](docs/optimization-plan.md)에 지원 범위,
 동기·비동기 실행 경계, 가져올 최적화와 직접 가져오지 않을 동작을 정리했습니다.
 
@@ -18,7 +20,9 @@ tick 병렬화는 초기에 단일 스레드 대조 경로와 함께 개발할 �
 
 ## Rust 기반 개발
 
-Rust `1.96.0`, 단일 library package, 외부 Rust dependency 0개로 시작합니다.
+Rust `1.96.0`, 단일 package의 library와 서버 실행 파일을 사용합니다.
+네트워크에는 필요한 기능만 켠 Tokio, 상태 JSON에는 serde_json을 사용하며 버전과 [의존성 고지](THIRD_PARTY_NOTICES.md)를 고정합니다.
+NBT·wire·section kernel·CPU pool 자체에는 추가 외부 framework를 도입하지 않았습니다.
 `src/nbt`는 모든 binary tag·Java modified UTF-8·mixed list·named/network root·자원 제한을 처리합니다.
 `src/snbt`는 현대 SNBT parser·compact/pretty writer와 UTF-16 진단을 처리합니다. [범위·자원 정책·대조 근거](docs/snbt.md)를 별도로 기록합니다.
 `src/nbt/path`와 `src/nbt/predicate`는 경로 조회·생성·변경·삭제와 bounded 비교를 처리하고, 여섯 NumericTag 변환도 제공합니다.
@@ -36,6 +40,25 @@ cargo test --test wire_java_oracle -- --ignored --nocapture
 
 마지막 명령은 로컬 공식 JAR의 클래스와 실제 대조합니다. 일반 테스트에서는 명시적으로 ignored이며 별도 실행 결과만 대조 성공 근거로 사용합니다.
 CI는 네 native target에서 foundation debug/release 테스트를 실행합니다. 이 CI의 통과는 완성된 서버의 플랫폼 검증을 뜻하지 않습니다.
+
+## 현재 서버 실행
+
+```powershell
+cargo run --release -- --bind 127.0.0.1 --port 25565
+```
+
+Java 서버 목록에서 상태·설명·ping을 확인할 수 있습니다. 로그인은 미구현임을 표시하는 disconnect를 반환합니다.
+연결별 읽기·쓰기 순서, 연결 수, 프레임 크기, 전체 교환 시간과 통신량을 제한하며 종료 시 task/socket을 회수합니다.
+기본 I/O worker는 최대2개입니다. [실행·청크·worker 범위](docs/server-runtime.md)에서 설정과 검증 경계를 확인할 수 있습니다.
+
+청크 section 병렬 준비를 실제 codec으로 실행하는 예제는 다음과 같습니다.
+
+```powershell
+cargo run --release --example prepare_sections -- 2 8192 8 257
+```
+
+인수는 worker 수·section 수·동시 작업 상한·palette 크기입니다. worker0은 동기 대조 경로입니다.
+이 예제는 section 준비의 처리량·지연·버퍼 예산을 측정합니다. 월드 tick 병렬화나 플레이 가능한 월드의 부하 시험은 아닙니다.
 
 ## 작업 공간
 

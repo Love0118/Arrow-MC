@@ -1,5 +1,13 @@
 # Third-party notices
 
+## Rust runtime dependencies
+
+The runnable TCP server uses pinned Tokio and serde_json packages. Their resolved
+dependencies have individual notices in [third_party/rust/README.md](third_party/rust/README.md).
+The collector retains the original license/copyright files and records their
+hashes against Cargo.lock, including packages for other supported platforms.
+Include the applicable notices when distributing binaries containing this code.
+
 ## Unicode data
 
 `third_party/unicode/16.0.0/` contains Unicode 16.0.0 Character Database data.

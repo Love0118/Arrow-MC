@@ -13,3 +13,5 @@ Cargo.lock text eol=lf
 # Upstream SpecialCasing.txt intentionally includes a terminal blank line.
 /third_party/unicode/16.0.0/* -whitespace
 /src/unicode_names/data/*.bin binary
+# Cargo license notices are also retained byte for byte.
+/third_party/rust/*/* -text -whitespace

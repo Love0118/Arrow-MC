@@ -1,0 +1,146 @@
+[
+  {
+    "Palette": 1,
+    "Workers": 0,
+    "MedianSectionsPerSecond": 345619.37,
+    "MedianP95Us": 2,
+    "PeakReservedBytes": 16646.0,
+    "SampledPeakWorkingSetBytes": 4771840.0
+  },
+  {
+    "Palette": 1,
+    "Workers": 1,
+    "MedianSectionsPerSecond": 311067.15,
+    "MedianP95Us": 17,
+    "PeakReservedBytes": 133144.0,
+    "SampledPeakWorkingSetBytes": 4837376.0
+  },
+  {
+    "Palette": 1,
+    "Workers": 2,
+    "MedianSectionsPerSecond": 568678.6,
+    "MedianP95Us": 16,
+    "PeakReservedBytes": 266288.0,
+    "SampledPeakWorkingSetBytes": 4861952.0
+  },
+  {
+    "Palette": 1,
+    "Workers": 4,
+    "MedianSectionsPerSecond": 712741.38,
+    "MedianP95Us": 48,
+    "PeakReservedBytes": 532576.0,
+    "SampledPeakWorkingSetBytes": 5259264.0
+  },
+  {
+    "Palette": 1,
+    "Workers": 8,
+    "MedianSectionsPerSecond": 387848.03,
+    "MedianP95Us": 114,
+    "PeakReservedBytes": 1065152.0,
+    "SampledPeakWorkingSetBytes": 5566464.0
+  },
+  {
+    "Palette": 1,
+    "Workers": 12,
+    "MedianSectionsPerSecond": 376044.17,
+    "MedianP95Us": 174,
+    "PeakReservedBytes": 1597728.0,
+    "SampledPeakWorkingSetBytes": 6025216.0
+  },
+  {
+    "Palette": 256,
+    "Workers": 0,
+    "MedianSectionsPerSecond": 133458.18,
+    "MedianP95Us": 10,
+    "PeakReservedBytes": 16646.0,
+    "SampledPeakWorkingSetBytes": 4808704.0
+  },
+  {
+    "Palette": 256,
+    "Workers": 1,
+    "MedianSectionsPerSecond": 113828.13,
+    "MedianP95Us": 47,
+    "PeakReservedBytes": 133144.0,
+    "SampledPeakWorkingSetBytes": 4874240.0
+  },
+  {
+    "Palette": 256,
+    "Workers": 2,
+    "MedianSectionsPerSecond": 224371.51,
+    "MedianP95Us": 54,
+    "PeakReservedBytes": 266288.0,
+    "SampledPeakWorkingSetBytes": 5021696.0
+  },
+  {
+    "Palette": 256,
+    "Workers": 4,
+    "MedianSectionsPerSecond": 396870.38,
+    "MedianP95Us": 76,
+    "PeakReservedBytes": 532576.0,
+    "SampledPeakWorkingSetBytes": 5345280.0
+  },
+  {
+    "Palette": 256,
+    "Workers": 8,
+    "MedianSectionsPerSecond": 416601.51,
+    "MedianP95Us": 159,
+    "PeakReservedBytes": 1065152.0,
+    "SampledPeakWorkingSetBytes": 5963776.0
+  },
+  {
+    "Palette": 256,
+    "Workers": 12,
+    "MedianSectionsPerSecond": 449815.16,
+    "MedianP95Us": 228,
+    "PeakReservedBytes": 1597728.0,
+    "SampledPeakWorkingSetBytes": 6615040.0
+  },
+  {
+    "Palette": 257,
+    "Workers": 0,
+    "MedianSectionsPerSecond": 289764.85,
+    "MedianP95Us": 5,
+    "PeakReservedBytes": 16646.0,
+    "SampledPeakWorkingSetBytes": 4763648.0
+  },
+  {
+    "Palette": 257,
+    "Workers": 1,
+    "MedianSectionsPerSecond": 290991.76,
+    "MedianP95Us": 13,
+    "PeakReservedBytes": 133144.0,
+    "SampledPeakWorkingSetBytes": 4837376.0
+  },
+  {
+    "Palette": 257,
+    "Workers": 2,
+    "MedianSectionsPerSecond": 487113.09,
+    "MedianP95Us": 25,
+    "PeakReservedBytes": 266288.0,
+    "SampledPeakWorkingSetBytes": 5021696.0
+  },
+  {
+    "Palette": 257,
+    "Workers": 4,
+    "MedianSectionsPerSecond": 704841.27,
+    "MedianP95Us": 46,
+    "PeakReservedBytes": 532576.0,
+    "SampledPeakWorkingSetBytes": 5320704.0
+  },
+  {
+    "Palette": 257,
+    "Workers": 8,
+    "MedianSectionsPerSecond": 390243.44,
+    "MedianP95Us": 111,
+    "PeakReservedBytes": 1065152.0,
+    "SampledPeakWorkingSetBytes": 5709824.0
+  },
+  {
+    "Palette": 257,
+    "Workers": 12,
+    "MedianSectionsPerSecond": 359738.45,
+    "MedianP95Us": 182,
+    "PeakReservedBytes": 1597728.0,
+    "SampledPeakWorkingSetBytes": 6049792.0
+  }
+]

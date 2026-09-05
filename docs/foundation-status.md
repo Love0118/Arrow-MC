@@ -1,6 +1,18 @@
-# 데이터 기반 첫 구현 상태
+# 서버·데이터 기반 구현 상태
 
 기준일 2026-09-05. 전체 서버 목표는 진행 중이며 아이템 행동 게이트는 닫혀 있다.
+
+## 현재 실행 경로
+
+실제 Java status/ping 서버, section palette/packed storage, 고정 worker의 병렬 section 준비를 구현했다.
+[실행과 자원 경계](server-runtime.md)에 사용 방법과 현재 제한을 기록했다. 로그인 완료·플레이·월드 생성·게임 tick은 남아 있다.
+로컬 기본 전체 테스트198개가 통과했고, Clippy·format을 통과했다. 선택 검증7개는 기본 실행에서 제외한다.
+서버 실제 TCP/CLI12개·section18개·runtime13개와 독립 검수, 공식 codec/UTF-8/section 대조를 포함한다.
+
+Tokio1.53.1·serde_json1.0.151을 고정해 사용하며 단일 package의 library+binary를 유지한다.
+네트워크 대기와 종료 조율에 필요한 Tokio 기능만 사용하고 CPU section 작업은 별도 고정 pool로 수행한다.
+모든 lock package23개의 [원문 의존성 고지](../third_party/rust/README.md)를 수집·검사했다.
+이전의 외부 의존성0개는 아래 초기 데이터 기반 snapshot에 해당하며 현재 서버 package 전체의 수치가 아니다.
 
 ## NBT 경로 기반 추가
 
@@ -12,7 +24,9 @@ Java unchecked예외11개·immutable identity20개·소유 supplier별칭1개·E
 
 거부된20,000단계 factory 값의 재귀 해제로 stack overflow가 발생하던 문제를 수정했다.
 `Tag::drop_iterative`와 소유 임시값 guard는 이미 비워진 container slot을 사용해 추가 할당·unsafe 없이 해제한다.
-정확성·최적화 리뷰어가 경로·공유 예산·부분 복사·오류 후 해제를 독립 확인했다. 이 batch의 native CI 결과는 별도 기록한다.
+정확성·최적화 리뷰어가 경로·공유 예산·부분 복사·오류 후 해제를 독립 확인했다.
+commit `0e872c6`의 [CI run33952148949](https://github.com/Love0118/Arrow-MC/actions/runs/33952148949)에서 네 native host의
+format·Clippy·debug154·release154와 Python tooling이 통과했다.
 
 NBT의 남은 범위를 서버 전체의 선행 조건으로 확장하지 않는다. 사용자 피드백에 따라 실제 TCP status/ping 서버,
 청크 section palette/packed storage, 제한된 shared CPU worker를 독립 구현 경로로 병행한다.
@@ -29,10 +43,10 @@ NBT의 남은 범위를 서버 전체의 선행 조건으로 확장하지 않는
   별도 입력·할당·출력 제한. [SNBT 범위와 대조 자료](snbt.md)에 관찰 사례와 API 경계를 기록했다.
 - `src/unicode_names`: 공식 Unicode16 데이터에서 만든 읽기 전용 1,352,711-byte lookup. 전체 Java25 이름·대문자·hex digit 대조,
   [출처와 고지](unicode-data.md) 보존. 입력마다 heap map을 만들지 않는다.
-- 한 개 Rust library package, Rust 1.96.0, unsafe 금지, 외부 Rust dependency 0개.
+- 초기 SNBT snapshot은 한 개 Rust library package, Rust1.96.0, unsafe 금지, 외부 Rust dependency0개였다.
 - 공식 JAR/source/resource/registry/packet 발견 목록과 lock→metadata→bundler→inner JAR→report provenance 검증 도구.
 
-## 실제 실행한 검증
+## 이전 SNBT batch의 실제 실행 검증
 
 Windows x86_64, Rust1.96.0/Java25에서 다음을 실행했다.
 
@@ -95,5 +109,5 @@ compound의 정렬 Vec·private ordinal은 초기 구현 선택이며 hot-path �
 Linux x86_64/ARM64·macOS ARM64·Windows x86_64 네 native host의 format/clippy/debug24/release24 테스트와 Python10 테스트가 통과했다.
 각 host triple 확인 단계도 성공했다. Java oracle는 CI에서 ignored이며 위의 Windows 로컬 명시적 실행 결과로만 입증한다.
 최초 workflow는 YAML 구문으로 job 시작 전 실패했고 `b8dfca1`에서 수정하여 성공했다.
-현재 서버 실행기·gameplay·멀티코어 tick/청크 성능은 구현·검증하지 않았다.
+이전 SNBT batch 시점에는 서버 실행기·gameplay·멀티코어 tick/청크 성능을 구현·검증하지 않았다.
 소스를 참조해 독립 설계한 구현이며 [출처 정책](provenance-policy.md)을 따른다. clean-room이나 법적 무위험은 주장하지 않는다.

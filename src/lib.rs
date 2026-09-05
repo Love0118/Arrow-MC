@@ -4,7 +4,10 @@
 //! have independent compatibility evidence against the locked Vanilla version.
 
 pub mod nbt;
+pub mod runtime;
+pub mod server;
 pub mod snbt;
 pub mod wire;
+pub mod world;
 
 mod unicode_names;
