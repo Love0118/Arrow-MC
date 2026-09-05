@@ -22,8 +22,8 @@ Windows x86_64, Rust1.96.0/Java25에서 다음을 실행했다.
 
 | 검증 | 결과와 범위 |
 | --- | --- |
-| `cargo test --locked --all-targets` | 56통과, live Java oracle3개는 명시적 ignored |
-| `cargo test --locked --release --all-targets --timings` | 동일56통과. foundation release 검증이며 서버 부하 benchmark 아님 |
+| `cargo test --locked --all-targets` | 66통과, live Java oracle3개는 명시적 ignored |
+| `cargo test --locked --release --all-targets --timings` | 동일66통과. foundation release 검증이며 서버 부하 benchmark 아님 |
 | `cargo test --locked --test wire_java_oracle -- --ignored --nocapture` | 공식26.3-pre-2 Java VarInt/VarLong15,420사례 실제 비교 통과 |
 | SNBT frozen oracle | 실제 JVM 관찰7,018개: parser7,005개의 typed value·cursor·오류 key/인수, compact2,063개, 깊이 정책6개 통과; 항목 간 중복 있음 |
 | SNBT live writer oracle | Java float71,168개와 pretty38개 실제 비교 통과 |
@@ -43,9 +43,16 @@ SNBT 구현에서도 정확성·최적화 리뷰 역할 두 개를 유지했다.
 전체 corpus로 재검증했다. 확장된 오류 객체의 재귀 stack 비용 문제는 작은 내부 실패 값과 parser 한 곳의 진단으로 해결했다.
 512단계 list·compound·builtin은 기본 test thread stack에서 검증했다. 진단 인수의 잘못된 span·출력 제한과 rollback도 확인했다.
 
+최초 SNBT commit `4c099c8`의 [native CI](https://github.com/Love0118/Arrow-MC/actions/runs/33950228901)에서는
+Linux x86_64·Windows x86_64와 tooling이 통과했지만 Linux/macOS ARM64의 debug512단계 쓰기 경로에서 stack overflow가 발생했다.
+writer도 내부 실패를 offset·kind만 갖는 작은 값으로 변경하고 공개 오류는 경계에서 한 번 구성하도록 수정했다.
+Windows debug assembly에서 compact 재귀 frame은3,768→600bytes, pretty compound 재귀 경로는3,848→1,160bytes로 감소했다.
+이는 ARM 실행 검증을 대신하지 않으며, parsing·writing·drop을 분리한 기본 stack 회귀 검증을 추가했다.
+수정 전후91,000개 출력·오류·rollback 비교가 일치했다. native 수정 검증 결과는 다음 CI 기록으로 구분한다.
+
 ## 현재 library 빌드 비용
 
-Windows x86_64, Ryzen5 9600X, Rust1.96.0에서 별도 빈 Cargo target directory로 한 번 측정했다.
+초기 SNBT commit `4c099c8`의 Windows x86_64, Ryzen5 9600X, Rust1.96.0에서 별도 빈 Cargo target directory로 한 번 측정했다.
 Cargo process 전체 경과 시간은 debug library 최초0.901s, 변경 없음0.052s, `src/lib.rs`의 timestamp만 갱신한
 재컴파일0.324s, release library 최초0.887s였다. OS file cache는 비우지 않았다.
 debug/release `rlib`는 각각8,083,862/3,208,740bytes였다. 이는 배포 executable 크기나 build peak RAM 측정이 아니다.

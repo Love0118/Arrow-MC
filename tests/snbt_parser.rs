@@ -1,7 +1,5 @@
 use arrow_mc::nbt::{Compound, CompoundEntry, NbtString, Tag};
-use arrow_mc::snbt::{
-    ErrorKind, Limits, parse, parse_compound_utf16, parse_prefix, parse_utf16, write,
-};
+use arrow_mc::snbt::{ErrorKind, Limits, parse, parse_compound_utf16, parse_prefix, parse_utf16};
 
 fn read(input: &str) -> Tag {
     parse(input, Limits::default()).unwrap()
@@ -187,12 +185,10 @@ fn utf16_input_and_decoded_allocations_have_separate_preadmission_limits() {
 }
 
 #[test]
-fn nesting_512_parse_write_and_drop_fit_the_default_test_thread_stack() {
+fn parse_512_lists_on_the_default_test_thread_stack() {
     let input = format!("{}0{}", "[".repeat(512), "]".repeat(512));
     let value = read(&input);
-    let mut output = Vec::new();
-    write(&value, &mut output, Limits::default()).unwrap();
-    assert_eq!(output, units(&input));
+    assert_eq!(unwrap_nested(value, 512), Tag::Int(0));
     let excessive = format!("[{}]", input);
     assert_eq!(
         parse(&excessive, Limits::default()).unwrap_err().kind,
@@ -209,12 +205,20 @@ fn nesting_512_parse_write_and_drop_fit_the_default_test_thread_stack() {
 }
 
 #[test]
-fn compound_and_builtin_depth_use_the_same_tested_stack_policy() {
+fn parse_512_compounds_on_the_default_test_thread_stack() {
     let compound = format!("{}0{}", "{a:".repeat(512), "}".repeat(512));
     let value = read(&compound);
-    let mut output = Vec::new();
-    write(&value, &mut output, Limits::default()).unwrap();
-    assert_eq!(output, units(&compound));
+    assert_eq!(unwrap_nested(value, 512), Tag::Int(0));
+    assert_eq!(
+        parse(&format!("{{a:{compound}}}"), Limits::default())
+            .unwrap_err()
+            .kind,
+        ErrorKind::DepthLimit
+    );
+}
+
+#[test]
+fn parse_512_builtin_calls_on_the_default_test_thread_stack() {
     let calls = format!("{}1{}", "bool(".repeat(512), ")".repeat(512));
     assert_eq!(read(&calls), Tag::Byte(1));
     assert_eq!(
@@ -223,6 +227,37 @@ fn compound_and_builtin_depth_use_the_same_tested_stack_policy() {
             .kind,
         ErrorKind::DepthLimit
     );
+}
+
+fn unwrap_nested(mut value: Tag, depth: usize) -> Tag {
+    for _ in 0..depth {
+        value = match value {
+            Tag::List(mut children) => {
+                assert_eq!(children.len(), 1);
+                children.pop().unwrap()
+            }
+            Tag::Compound(mut compound) => {
+                assert_eq!(compound.entries().len(), 1);
+                compound.insert("a".into(), Tag::Int(0)).unwrap().unwrap()
+            }
+            _ => panic!("missing nested container"),
+        };
+    }
+    value
+}
+
+#[test]
+fn drop_512_containers_without_involving_a_parser_or_writer() {
+    let mut list = Tag::Int(0);
+    let mut compound = Tag::Int(0);
+    for _ in 0..512 {
+        list = Tag::List(vec![list]);
+        compound = Tag::Compound(
+            Compound::from_entries(vec![CompoundEntry::new("a".into(), compound)]).unwrap(),
+        );
+    }
+    drop(list);
+    drop(compound);
 }
 
 #[test]

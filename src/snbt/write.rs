@@ -18,7 +18,7 @@ pub fn write(tag: &Tag, output: &mut Vec<u16>, limits: Limits) -> Result<(), Err
     if result.is_err() {
         writer.output.truncate(start);
     }
-    result
+    result.map_err(Failure::into_error)
 }
 
 /// Appends Vanilla's structure-oriented SNBT presentation with four-space
@@ -36,7 +36,25 @@ pub fn write_pretty(tag: &Tag, output: &mut Vec<u16>, limits: Limits) -> Result<
     if result.is_err() {
         writer.output.truncate(start);
     }
-    result
+    result.map_err(Failure::into_error)
+}
+
+// Keep rich diagnostic metadata out of every recursive writer result. The
+// writer only raises resource errors and builds the public error once at entry.
+#[derive(Clone, Copy)]
+struct Failure {
+    offset_utf16: usize,
+    kind: ErrorKind,
+}
+
+impl Failure {
+    fn into_error(self) -> Error {
+        Error {
+            offset_utf16: self.offset_utf16,
+            kind: self.kind,
+            diagnostic: None,
+        }
+    }
 }
 
 struct Writer<'a> {
@@ -46,15 +64,14 @@ struct Writer<'a> {
 }
 
 impl Writer<'_> {
-    fn error(&self, kind: ErrorKind) -> Error {
-        Error {
+    fn error(&self, kind: ErrorKind) -> Failure {
+        Failure {
             offset_utf16: self.output.len() - self.start,
             kind,
-            diagnostic: None,
         }
     }
 
-    fn reserve(&mut self, count: usize) -> Result<(), Error> {
+    fn reserve(&mut self, count: usize) -> Result<(), Failure> {
         let length = (self.output.len() - self.start)
             .checked_add(count)
             .ok_or_else(|| self.error(ErrorKind::OutputLimit))?;
@@ -66,26 +83,26 @@ impl Writer<'_> {
             .map_err(|_| self.error(ErrorKind::AllocationFailed))
     }
 
-    fn unit(&mut self, unit: u16) -> Result<(), Error> {
+    fn unit(&mut self, unit: u16) -> Result<(), Failure> {
         self.reserve(1)?;
         self.output.push(unit);
         Ok(())
     }
 
-    fn ascii(&mut self, text: &str) -> Result<(), Error> {
+    fn ascii(&mut self, text: &str) -> Result<(), Failure> {
         debug_assert!(text.is_ascii());
         self.reserve(text.len())?;
         self.output.extend(text.bytes().map(u16::from));
         Ok(())
     }
 
-    fn integer(&mut self, value: i64) -> Result<(), Error> {
+    fn integer(&mut self, value: i64) -> Result<(), Failure> {
         let mut text = NumberText::new();
         write!(text, "{value}").expect("i64 fits numeric scratch");
         self.ascii(text.as_str())
     }
 
-    fn quoted(&mut self, value: &NbtString) -> Result<(), Error> {
+    fn quoted(&mut self, value: &NbtString) -> Result<(), Failure> {
         let units = value.as_utf16();
         let quote = match units.iter().find(|&&unit| unit == 0x22 || unit == 0x27) {
             Some(0x22) => 0x27,
@@ -116,7 +133,7 @@ impl Writer<'_> {
         self.unit(quote)
     }
 
-    fn key(&mut self, name: &NbtString) -> Result<(), Error> {
+    fn key(&mut self, name: &NbtString) -> Result<(), Failure> {
         let units = name.as_utf16();
         let word = |unit: u16| matches!(unit, 65..=90 | 97..=122 | 46 | 95);
         let boolean = |word: &[u8]| {
@@ -140,7 +157,7 @@ impl Writer<'_> {
         }
     }
 
-    fn tag(&mut self, tag: &Tag, depth: usize) -> Result<(), Error> {
+    fn tag(&mut self, tag: &Tag, depth: usize) -> Result<(), Failure> {
         if matches!(tag, Tag::List(_) | Tag::Compound(_)) && depth >= self.limits.max_depth {
             return Err(self.error(ErrorKind::DepthLimit));
         }
@@ -196,7 +213,7 @@ impl Writer<'_> {
         }
     }
 
-    fn array_spacing(&mut self, index: usize, pretty: bool) -> Result<(), Error> {
+    fn array_spacing(&mut self, index: usize, pretty: bool) -> Result<(), Failure> {
         if index != 0 {
             self.ascii(",")?;
         }
@@ -206,7 +223,7 @@ impl Writer<'_> {
         Ok(())
     }
 
-    fn byte_array(&mut self, values: &[i8], pretty: bool) -> Result<(), Error> {
+    fn byte_array(&mut self, values: &[i8], pretty: bool) -> Result<(), Failure> {
         self.ascii("[B;")?;
         for (index, &value) in values.iter().enumerate() {
             self.array_spacing(index, pretty)?;
@@ -216,7 +233,7 @@ impl Writer<'_> {
         self.ascii("]")
     }
 
-    fn int_array(&mut self, values: &[i32], pretty: bool) -> Result<(), Error> {
+    fn int_array(&mut self, values: &[i32], pretty: bool) -> Result<(), Failure> {
         self.ascii("[I;")?;
         for (index, &value) in values.iter().enumerate() {
             self.array_spacing(index, pretty)?;
@@ -225,7 +242,7 @@ impl Writer<'_> {
         self.ascii("]")
     }
 
-    fn long_array(&mut self, values: &[i64], pretty: bool) -> Result<(), Error> {
+    fn long_array(&mut self, values: &[i64], pretty: bool) -> Result<(), Failure> {
         self.ascii("[L;")?;
         for (index, &value) in values.iter().enumerate() {
             self.array_spacing(index, pretty)?;
@@ -235,7 +252,7 @@ impl Writer<'_> {
         self.ascii("]")
     }
 
-    fn indentation(&mut self, depth: usize) -> Result<(), Error> {
+    fn indentation(&mut self, depth: usize) -> Result<(), Failure> {
         let units = depth * 4;
         self.reserve(units)?;
         self.output.extend(std::iter::repeat_n(0x20, units));
@@ -248,7 +265,7 @@ impl Writer<'_> {
         depth: usize,
         path: PrettyPath,
         inline: bool,
-    ) -> Result<(), Error> {
+    ) -> Result<(), Failure> {
         if matches!(tag, Tag::List(_) | Tag::Compound(_)) && depth >= self.limits.max_depth {
             return Err(self.error(ErrorKind::DepthLimit));
         }
@@ -282,7 +299,7 @@ impl Writer<'_> {
         index: usize,
         depth: usize,
         inline: bool,
-    ) -> Result<(), Error> {
+    ) -> Result<(), Failure> {
         if index != 0 {
             self.ascii(",")?;
         }
@@ -302,7 +319,7 @@ impl Writer<'_> {
         delimiter: &str,
         depth: usize,
         inline: bool,
-    ) -> Result<(), Error> {
+    ) -> Result<(), Failure> {
         if !inline {
             self.ascii("\n")?;
             self.indentation(depth)?;
@@ -316,7 +333,7 @@ impl Writer<'_> {
         depth: usize,
         path: PrettyPath,
         inline: bool,
-    ) -> Result<(), Error> {
+    ) -> Result<(), Failure> {
         let entries = compound.entries();
         if entries.is_empty() {
             return self.ascii("{}");
@@ -365,7 +382,7 @@ impl Writer<'_> {
         depth: usize,
         path: PrettyPath,
         inline: bool,
-    ) -> Result<(), Error> {
+    ) -> Result<(), Failure> {
         let key = entry.name.as_utf16();
         if !key.is_empty()
             && key
@@ -381,7 +398,7 @@ impl Writer<'_> {
         self.pretty_tag(&entry.value, depth + 1, path.with_key(key), inline)
     }
 
-    fn number(&mut self, number: Number) -> Result<(), Error> {
+    fn number(&mut self, number: Number) -> Result<(), Failure> {
         let value = number.as_double();
         if value.is_nan() {
             return self.ascii("NaN");
