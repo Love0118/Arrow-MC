@@ -11,6 +11,12 @@ source/registry 생성·pool 시작·최종 값 비교·최종 결과/pool 해�
 완료 전달과 임시 kernel 자료구조의 해제는 측정에 포함한다. CPU의 보수적 예약151,230,784bytes와
 worker별2MiB stack은 별도이며 RSS는 측정하지 않았다.
 
+후속 [별도 프로세스 메모리 관측](lighting-windows-memory.json)에서는 준비·warmup·모든 조합·값 비교를 포함한
+프로세스 전체의 OS 보고 peak working set47,333,376bytes(45.1MiB), private memory 표본 최대42,803,200bytes를 기록했다.
+80개 표본이며 10ms sleep을 요청했다. worker별로 분리하지 않았고 이 관측 실행으로 기존 시간 중앙값을 바꾸지 않았다.
+Working set은 공유/전용 resident page를 포함하며 private memory 값과는 다르다.
+[Microsoft의 지표 정의](https://learn.microsoft.com/en-us/dotnet/api/system.diagnostics.process.peakworkingset64)를 따른다.
+
 [12개 원시 실행·해시·재현 조건](lighting-windows-summary.json)에 실제 측정 코드와 뒤이은 metadata 설명 수정의 해시를 구분했다.
 고정 local v3 registry와 `ARROW_MC_JAVA_REFERENCE_ROOT`를 준비한 뒤 재현한다.
 

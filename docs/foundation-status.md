@@ -41,7 +41,11 @@ Linux ARM64/x86_64와 macOS ARM64는 debug/release 각각612개·37선택제외�
 Windows debug도 통과했지만 release는 기존 저장 취소 테스트의 완료 counter/실제 결과 전달 사이 경쟁에서 실패했다.
 counter를 결과 전달 완료로 가정한 테스트의 동기화 문제였다. test-only gate로 결과 전달 직전 취소 시 예약이 남음을
 검증하고, 실제 receiver에 결과가 있는 경우에만 즉시 환급을 확인하도록 수정했다. production 동작은 바꾸지 않았다.
-수정한 storage debug/release 각각2개와 해당 release 테스트100회 반복을 통과했다. 후속 native 재검증은 별도로 기록한다.
+수정한 storage debug/release 각각2개와 해당 release 테스트100회 반복을 통과했다.
+수정 source `5e14ec702b2817a9542cb5c538a6426552645362`의
+[CI33973360687](https://github.com/Love0118/Arrow-MC/actions/runs/33973360687)는 **success**다.
+네 native 플랫폼 모두 debug/release 각각612통과·0실패·37선택제외와 format·Clippy·tooling을 통과했다.
+네 host의 exact cache 복원도 성공했다. 이전 실패를 성공으로 덮지 않고 `Roadmap/reviews/lighting-ci-{9a15a52,5e14ec7}*`에 구분한다.
 
 새 dependency·crate·world trait·per-world CPU pool은 추가하지 않았다. 기존 native 의존성 cache가 있는 로컬 all-target compile은
 debug30.05s/release53.42s였다. 테스트 포함 총65.08s/87.72s이며 clean build나 동일 소스 성능 개선 수치가 아니다.
@@ -51,6 +55,10 @@ debug30.05s/release53.42s였다. 테스트 포함 총65.08s/87.72s이며 clean b
 inline198.64ms, pool1 worker230.67ms, 2 workers110.93ms, 4 workers61.68ms 중앙값을 기록했다.
 모든 실행의 비교 값1,775,616개가 일치했고, 보수적 공용 예약151,230,784bytes와 별도 worker stack을 기록했다.
 이 fixture에서는 1 worker 비용이 더 컸으며, 4 workers는 inline 대비 약3.22배였다. 전체 TPS·p99·RSS 또는 Vanilla 대비 속도 주장이 아니다.
+
+별도 Windows 프로세스에서 같은 benchmark 전체를 관측한 [메모리 표본](benchmarks/lighting-windows-memory.json)은
+OS 보고 peak working set47,333,376bytes, private memory 표본 최대42,803,200bytes였다.
+registry/source 준비와 전체 실행·검증을 포함한 값이며 worker별 분리 측정·resident 예산 상한을 뜻하지 않는다.
 
 저장 light 재사용·PRE/POST callbacks·ticket/status·실제 world mutation과 Play는 남아 있다.
 현재 완료본은 보관하는 동안 CPU slot을 유지한다. 긴 resident 조명 수명의 별도 예산 전환과 겹치는 domain 조정도 후속 작업이다.
