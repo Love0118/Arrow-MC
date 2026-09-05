@@ -50,6 +50,7 @@ pub struct ChunkDecodeOutput {
     draft: StoredChunkDraft,
     registries: Arc<ChunkRegistrySnapshot>,
     key: ChunkReadKey,
+    height: DimensionHeight,
     _lease: Lease,
 }
 
@@ -184,6 +185,7 @@ pub struct ResidentChunk {
     draft: StoredChunkDraft,
     registries: Arc<ChunkRegistrySnapshot>,
     key: ChunkReadKey,
+    height: DimensionHeight,
     _lease: ResidentLease,
 }
 
@@ -242,6 +244,13 @@ impl ChunkDecodeOutput {
     pub fn retained_bytes(&self) -> usize {
         self.draft.retained_bytes()
     }
+    /// Context captured by the decoder, independent of the externally supplied key.
+    pub fn height(&self) -> DimensionHeight {
+        self.height
+    }
+    pub fn registries(&self) -> &ChunkRegistrySnapshot {
+        &self.registries
+    }
     /// Destination admission succeeds before the original job lease is released.
     /// No public API can detach the owned draft from both accounting domains.
     /// This transfers memory ownership only. The caller must validate the key
@@ -269,12 +278,14 @@ impl ChunkDecodeOutput {
             draft,
             registries,
             key,
+            height,
             _lease,
         } = self;
         let result = ResidentChunk {
             draft,
             registries,
             key,
+            height,
             _lease: lease,
         };
         drop(_lease);
@@ -294,6 +305,9 @@ impl ResidentChunk {
     }
     pub fn registries(&self) -> &ChunkRegistrySnapshot {
         &self.registries
+    }
+    pub fn height(&self) -> DimensionHeight {
+        self.height
     }
 }
 impl Drop for ResidentLease {
@@ -374,6 +388,7 @@ pub(super) fn decode_chunk(
             draft,
             registries,
             key,
+            height,
             _lease: lease,
         }),
         Ok(draft) => {

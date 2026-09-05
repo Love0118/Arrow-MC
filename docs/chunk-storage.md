@@ -2,7 +2,8 @@
 
 `26.3-pre-2` / DataVersion `5018`의 Anvil 파일을 실제로 읽고, 공용 CPU pool에서 압축·NBT·section을 decode한 뒤
 별도 resident 예산으로 소유권을 옮긴다. `examples/inspect_chunk.rs`와 `tests/chunk_storage_pipeline.rs`는 이 경로를
-network section encoding까지 연결한다. 아직 서버의 live world·ticket·spawn에 연결하지 않았으며 저장 writer도 없다.
+network section encoding까지 연결한다. 이후 [로드된 청크 소유자](chunk-loading-owner.md)를 추가해 요청 identity와 canonical view를 검증한다.
+아직 서버의 live world·ticket·spawn에 연결하지 않았으며 저장 writer도 없다.
 
 ## 데이터와 동작
 
@@ -33,7 +34,8 @@ NBT 소비자는 한 compound root에서 멈춘다. Java의 compressed refill·8
 불필요한 disk palette의 순서나 bit 폭을 그대로 보관한다는 계약은 아니다.
 
 현재 `5018`만 decode한다. 이전/누락 DataVersion은 upgrade 필요, 미래 버전은 미지원으로 반환한다.
-DFU, 저장 좌표 재배치, 중복 section의 live 적용, light engine 등록, postprocessing, tick/entity activation은 후속 단계다.
+DFU, 좌표를 포함한 tick/entity/structure의 개별 복원·활성화, 중복 section의 live 적용,
+light engine 등록과 postprocessing은 후속 단계다. 요청 위치의 canonical 게시와 relocation 진단은 owner에서 구현했다.
 
 ## 비동기와 소유권
 
@@ -47,6 +49,8 @@ DFU, 저장 좌표 재배치, 중복 section의 live 적용, light engine 등록
 `ChunkReadKey`는 epoch·좌표·generation을 전달한다. **adoption은 메모리 이전만 수행한다.**
 현재 world와의 key 일치, 늦은 결과 거부, ticket 유효성, 저장 좌표 검사 및 live publication은 이후 소유자가 처리해야 한다.
 section 준비의 기존 revision 검증과 새 disk loading의 검증 범위를 혼동하지 않는다.
+`ChunkLoadingOwner`는 이 중 요청 identity/context와 늦은 결과, 좌표 relocation·canonical resident 게시를 구현했다.
+실제 ticket engine·gameplay 활성화는 남아 있으며 낮은 수준 `try_adopt` 자체의 계약은 그대로다.
 
 ## 메모리와 의존성
 
@@ -86,8 +90,9 @@ hash는 이 고정 기준에 해당한다. snapshot을 갱신하면 신뢰할 �
 - chunk 72사례에는 collection 표현 20개와 boxed Float/Double 경계 22개를 포함한다. 전체 셀·count·light·metadata를 비교한다.
 - 공식 압축 NBT 소비 기록 988사례의 성공/실패 및 blob hash가 일치했다. 개별 예외 문자열 전체 동등성을 주장하지 않는다.
 - 실제 blocking I/O·CPU를 지연시킨 취소 시험과 resident 실패/재시도, 음수 region 좌표부터 실제 section encoding까지 검증했다.
-- 실제 공식 registry와 직접 만든 raw Anvil 예제: 1 section, network 8 bytes, CPU peak charge 29,360,310 bytes,
+- 초기 실제 공식 registry와 직접 만든 raw Anvil 예제: 1 section, network 8 bytes, CPU peak charge 29,360,310 bytes,
   resident charge 2,574 bytes였다. 플레이 가능한 월드 시험은 아니다.
+  현재 예제는 canonical owner를 거쳐 누락 기본값을 포함한24sections/192bytes를 준비한다. 별도 결과는 owner 문서에 기록한다.
 
 합성 24-section zlib 청크 12개를 같은 입력으로 한 번씩 읽은 Windows release 측정:
 

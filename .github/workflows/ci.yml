@@ -51,6 +51,22 @@ jobs:
           perl -MLocale::Maketext::Simple -e 'print "$^V $^O\n"'
       - name: Install the pinned Rust toolchain
         run: rustup toolchain install 1.96.0 --profile minimal --component rustfmt --component clippy
+      - name: Identify native cache environment
+        id: cache-environment
+        shell: bash
+        run: echo "image=${ImageVersion:-}" >> "$GITHUB_OUTPUT"
+      - name: Cache Cargo dependencies
+        id: cargo-cache
+        if: steps.cache-environment.outputs.image != ''
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/registry/src/
+            target/debug/
+            target/release/
+          key: cargo-v1-${{ matrix.runner }}-${{ runner.arch }}-${{ matrix.target }}-${{ steps.cache-environment.outputs.image }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'tools/Prepare-WindowsBuild.ps1', '.github/workflows/ci.yml', '.cargo/**') }}
       - name: Verify native architecture
         shell: bash
         run: |
@@ -68,6 +84,9 @@ jobs:
         run: |
           cargo fetch --locked
           python3 tools/collect_rust_notices.py --check
+      - name: Retain dependency artifacts for caching
+        if: steps.cache-environment.outputs.image != '' && steps.cargo-cache.outputs.cache-hit != 'true'
+        run: cargo clean --locked --package arrow-mc
 
   tooling:
     runs-on: ubuntu-24.04

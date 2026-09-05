@@ -1,12 +1,13 @@
-//! Read one Anvil chunk through the real I/O/CPU/adoption path. This does not
+//! Read one Anvil chunk through the real I/O/CPU/canonical owner path. This does not
 //! start a world, modify its files, or establish spawn/gameplay readiness.
 use arrow_mc::{
-    runtime::{ChunkReadKey, CpuPool, CpuPoolConfig, ResidentChunkBudget},
+    runtime::{CpuPool, CpuPoolConfig},
     server::configuration_data::parse_sha256,
     world::{
-        section::MAX_SECTION_NETWORK_BYTES,
+        loading::{ChunkLoadingOwner, LoadDemand, LoadingLimits, LoadingReadOutcome},
+        preparation::ChunkAddress,
         storage::{
-            ChunkReadOutcome, ChunkStore, StorageLimits,
+            ChunkStore, StorageLimits,
             chunk::DimensionHeight,
             registry::{ChunkRegistrySnapshot, ExpectedRegistryReference, RegistryLoadLimits},
         },
@@ -38,7 +39,18 @@ fn main() -> Result<(), Box<dyn Error>> {
         max_jobs: 4,
         buffer_bytes: 128 * 1024 * 1024,
     })?);
-    let resident_budget = ResidentChunkBudget::new(64 * 1024 * 1024);
+    let height = DimensionHeight::new(arguments[6].parse()?, arguments[7].parse()?)?;
+    let mut owner = ChunkLoadingOwner::new(
+        1,
+        Arc::clone(&registries),
+        height,
+        true,
+        LoadingLimits {
+            max_chunks: 1,
+            metadata_bytes: 64 * 1024,
+        },
+        64 * 1024 * 1024,
+    )?;
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
@@ -46,57 +58,68 @@ fn main() -> Result<(), Box<dyn Error>> {
         PathBuf::from(&arguments[3]),
         Arc::clone(&cpu),
         registries,
-        DimensionHeight::new(arguments[6].parse()?, arguments[7].parse()?)?,
+        height,
         StorageLimits::default(),
         2,
     )?;
-    let key = ChunkReadKey {
-        world_epoch: 1,
-        chunk_x: arguments[4].parse()?,
-        chunk_z: arguments[5].parse()?,
-        generation: 1,
+    let address = ChunkAddress {
+        x: arguments[4].parse()?,
+        z: arguments[5].parse()?,
     };
+    let LoadDemand::Read(request) = owner.request(address)? else {
+        return Err(io::Error::other("new owner unexpectedly retained this request").into());
+    };
+    let key = request.key();
     let start = Instant::now();
-    let outcome = runtime.block_on(store.read(key))?;
+    let outcome = runtime.block_on(request.read(&store))?;
     match outcome {
-        ChunkReadOutcome::Missing => println!("{}", serde_json::json!({"result":"missing"})),
-        ChunkReadOutcome::Unavailable(reason) => println!(
-            "{}",
-            serde_json::json!({"result":"unavailable", "reason":format!("{reason:?}")})
-        ),
-        ChunkReadOutcome::Decoded(output) => {
-            let resident = output
-                .try_adopt(&resident_budget)
-                .map_err(|_| io::Error::other("resident byte budget could not adopt this chunk"))?;
+        LoadingReadOutcome::Missing => {
+            owner.finish_without_chunk(key)?;
+            println!("{}", serde_json::json!({"result":"missing"}));
+        }
+        LoadingReadOutcome::Unavailable(reason) => {
+            owner.finish_without_chunk(key)?;
+            println!(
+                "{}",
+                serde_json::json!({"result":"unavailable", "reason":format!("{reason:?}")})
+            );
+        }
+        LoadingReadOutcome::Decoded(output) => {
+            let publication = owner.publish(output)?;
+            let resident = owner
+                .resident(address)
+                .ok_or_else(|| io::Error::other("publication did not retain its chunk"))?;
             let draft = resident.draft();
-            let mut encoded = Vec::new();
-            encoded.try_reserve_exact(MAX_SECTION_NETWORK_BYTES)?;
             let mut payload_bytes = 0;
             let mut sections = 0;
-            for stored in draft.sections() {
-                if let Some(section) = &stored.section {
-                    encoded.clear();
-                    section.write_network(&mut encoded)?;
-                    payload_bytes += encoded.len();
-                    sections += 1;
-                }
+            for y in i32::from(height.min_section())..=i32::from(height.max_section()) {
+                let completion = owner
+                    .prepare_section(address, y, &cpu)?
+                    .wait()
+                    .ok_or_else(|| io::Error::other("section preparation was cancelled"))?;
+                let prepared = owner.accept_prepared(completion)?;
+                payload_bytes += prepared.bytes().len();
+                sections += 1;
             }
             println!(
                 "{}",
                 serde_json::json!({
-                    "result":"decoded", "position":draft.position, "data_version":draft.data_version,
+                    "result":"resident", "requested_position":[address.x,address.z],
+                    "stored_position":draft.position, "relocated":publication.relocated.is_some(),
+                    "data_version":draft.data_version,
                     "status":format!("{:?}",draft.status), "stored_sections":draft.sections().len(),
                     "network_sections":sections, "section_payload_bytes":payload_bytes,
-                    "read_decode_adopt_encode_us":start.elapsed().as_micros(),
+                    "read_decode_publish_prepare_us":start.elapsed().as_micros(),
                     "cpu_peak_requested_buffer_bytes":cpu.stats().peak_reserved_buffer_bytes,
                     "resident_requested_backing_bytes":resident.retained_bytes(),
-                    "resident_budget_used_bytes":resident_budget.stats().used_bytes,
-                    "scope":"one chunk draft and section encoding; no spawn/lighting/player readiness or RSS claim"
+                    "resident_budget_used_bytes":owner.stats().resident_bytes,
+                    "owner_metadata_bytes":owner.stats().metadata_bytes,
+                    "scope":"one canonical chunk and shared CPU section encoding; no spawn/lighting/player readiness or RSS claim"
                 })
             );
-            drop(resident);
         }
     }
+    drop(owner);
     drop(store);
     Arc::try_unwrap(cpu)
         .map_err(|_| io::Error::other("outstanding CPU owner"))?

@@ -23,14 +23,36 @@ Tokio1.53.1·serde_json1.0.151·flate2 1.1.10(zlib-rs)·sha2 0.10.9와 OpenSSL0.
 현재 고정 외부 의존성129개의 [원문 의존성 고지](../third_party/rust/README.md)를 수집·검사했다.
 이전의 외부 의존성0개는 아래 초기 데이터 기반 snapshot에 해당하며 현재 서버 package 전체의 수치가 아니다.
 
-## 현재 청크 저장 로딩·예약 tick 복원
+## 로드된 청크 owner·chunk sender 추가
+
+[청크 owner](chunk-loading-owner.md)는 현재 수요와 실제 읽기/준비 결과를 owner identity로 연결하고,
+좌표 relocation·중복 section/light·누락 기본 section을 canonical view로 제공한다.
+[chunk sender](chunk-sender.md)는 f32 rate/ACK·동률 후보 선택과 전체 batch 승인 후 상태 변경을 구현한다.
+구현 에이전트 두 역할과 정확성·최적화 독립 리뷰 두 역할이 최종 코드까지 확인했다.
+
+일반 owner12·내부3·sender14개, 실제 sender Java 선택173·ACK/tick475개 관측을 통과했다.
+전체 Windows debug481/release481통과(각선택26제외), all-target Clippy와 format을 통과했다. 이 묶음의 native CI는 확인 중이다.
+실제 inspect_chunk는 공식 registry·직접 만든 Anvil 파일에서 canonical24sections/192bytes를 준비했다.
+raw 저장 읽기·canonical resident·현재 game send-ready를 구분하며, 실제 월드 활성화·Play socket은 아직 연결하지 않았다.
+
+반복 CI의 native dependency 재빌드 비용을 줄이기 위해 공식 actions/cache를 고정 SHA로 사용한다.
+native runner/architecture/target·host image·toolchain·lock·manifest·native helper·workflow 설정이 같을 때만 재사용한다.
+모든 검사는 항상 실행하고 cache miss의 성공한 job에서 `cargo clean --locked --package arrow-mc`로 Arrow 산출물을 제거한 뒤
+의존성만 보존한다. 다른 key로의 fallback은 사용하지 않는다. 최초 저장/적중 시간과 크기는 아직 측정 전이므로 개선 수치를 주장하지 않는다.
+workflow는 SHA를 검증한 actionlint1.7.12로 YAML·표현식·Action 입력을 확인했다. 외부 shellcheck/pyflakes는 사용하지 않았다.
+이번 로컬 all-target compile 시간은 debug21.80s/release38.32s였다. 기존 native/Rust artifact가 있는 cache의 증분 값이며
+최초 빌드나 성능 향상 수치가 아니다. 새 runtime 의존성이나 crate 분리는 없다.
+
+## 청크 저장 로딩·예약 tick 복원
 
 [Anvil 로딩](chunk-storage.md)과 [SavedTick](saved-ticks.md)을 실제 구현했다. 저장·압축·registry·NBT 소비자·tick의
 구현 에이전트를 병행했고, 정확성 및 최적화·추상화 독립 리뷰 두 역할이 마지막 수정까지 확인했다.
 청크 저장은 DataVersion5018의 read-only 경로다. live world/ticket/lighting/spawn·Play, DFU, durable 저장은 남아 있다.
 SavedTick은 메모리상 복원/pack과 clear/copy를 제공하며 실제 NBT tick type codec·gameplay callback은 아직 연결하지 않았다.
 
-Windows x86_64 전체 debug452/release452통과(각선택24제외), all-target Clippy와 format을 통과했다. 새 native CI는 확인 중이다.
+commit `cf158de`의 [CI run33960174302](https://github.com/Love0118/Arrow-MC/actions/runs/33960174302)에서
+네 native 플랫폼 모두 architecture·format·Clippy·debug452/release452(각선택24제외)를 통과했다.
+Windows 로컬 동일 전체 검증과 CI의 Python tooling·Unicode 재생성·원문 고지 검사도 통과했다.
 Python52개 중50개 통과/2개 조건부 제외, 고정 외부 의존성129개 원문 고지 검사도 통과했다.
 공식 대조는 chunk72사례, 압축 NBT 소비988사례, live tick332·saved tick398·heap129관찰이며,
 registry는35,723 states·1,286 blocks·67 biomes 전체 ID/default/property를 조회했다. 기본 CI의 ignored와 별도 실제 실행 근거를 구분한다.
