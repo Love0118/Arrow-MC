@@ -9,6 +9,11 @@
 로컬 기본 전체 테스트198개가 통과했고, Clippy·format을 통과했다. 선택 검증7개는 기본 실행에서 제외한다.
 서버 실제 TCP/CLI12개·section18개·runtime13개와 독립 검수, 공식 codec/UTF-8/section 대조를 포함한다.
 
+commit `7a3e90e`의 [CI run33953216241](https://github.com/Love0118/Arrow-MC/actions/runs/33953216241)에서 네 native 플랫폼
+전부 architecture·format·Clippy·debug198·release198 테스트가 통과했다. Python tooling·Unicode 재생성과 Linux의
+lock 기반 의존성 고지 검사도 성공했다. 최초 `d86860f`는 Unix CLI helper의 불필요한 `mut` lint로 실패했고,
+Windows 전용 scope로 수정해 재검증했다. 실행·section 병렬 준비의 성공이며 로그인·게임플레이 완성은 아니다.
+
 Tokio1.53.1·serde_json1.0.151을 고정해 사용하며 단일 package의 library+binary를 유지한다.
 네트워크 대기와 종료 조율에 필요한 Tokio 기능만 사용하고 CPU section 작업은 별도 고정 pool로 수행한다.
 모든 lock package23개의 [원문 의존성 고지](../third_party/rust/README.md)를 수집·검사했다.
