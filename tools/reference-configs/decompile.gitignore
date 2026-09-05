@@ -1,0 +1,9 @@
+/artifacts/
+/tools/
+/reports/
+/.codegraph/
+
+# Preserve Java packages named target, including entity AI target goals.
+!sources/
+!sources/**/
+!sources/**/*.java

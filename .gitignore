@@ -1,0 +1,4 @@
+/.codegraph/
+/target/
+**/__pycache__/
+*.pyc

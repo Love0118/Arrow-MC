@@ -1,0 +1,21 @@
+{
+  "minecraft": {
+    "id": "26.3-pre-2",
+    "type": "snapshot",
+    "manifest_url": "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json",
+    "version_url": "https://piston-meta.mojang.com/v1/packages/168cea25a2a1cbbcd1a55ea40bf184b7c66a29f3/26.3-pre-2.json",
+    "version_sha1": "168cea25a2a1cbbcd1a55ea40bf184b7c66a29f3"
+  },
+  "vineflower": {
+    "version": "1.12.0",
+    "url": "https://github.com/Vineflower/vineflower/releases/download/1.12.0/vineflower-1.12.0.jar",
+    "sha256": "1dfcfe974395734fa467ce620661c7623d05ba83670de0529b1fbd63ff548b9d"
+  },
+  "pumpkin": {
+    "url": "https://github.com/Pumpkin-MC/Pumpkin.git",
+    "commit": "8d0d0d311778cb0aecb5fc957d571a38f286fda0",
+    "submodules": {
+      "crates/pumpkin-plugin-wit": "1ad73fff1e0a9e21b99255816df5f99f6260c1b9"
+    }
+  }
+}
