@@ -79,8 +79,10 @@ shared registry·canonical 청크 palette는 복사하지 않고 원래 lease를
 CPU 슬롯 하나의 실제 canonical→조명→resident 이전→packet→TCP 시험과 예산 부족/재시도·unload 후 수명·COW·overflow를 검증했다.
 예제 한 건은 CPU 예약8,392,584bytes에서 resident 청구120,156bytes로 바뀌었다. 이 값은 해당 fixture의 admission 비용이며 RSS가 아니다.
 새 테스트 포함 로컬 debug/release 전체 각각630개·37선택제외와 strict Clippy·format을 통과했다.
-이 변경의 native CI는 source commit별로 별도 확인한다.
-이전 `5e14ec7`의612개 성공을 이 변경의 native 검증으로 대체하지 않는다.
+source `e0b45930dca1da4ac9d66b6b37cf7cfe5369e692`를 beta에 전달했고,
+[CI33974887856](https://github.com/Love0118/Arrow-MC/actions/runs/33974887856)에서 네 native 플랫폼 모두
+debug/release 각각630통과·0실패·37선택제외와 format·Clippy·tooling·의존성 고지 검사를 통과했다.
+이전 `5e14ec7`의612개 성공과 구분한 원본·집계는 로컬 `Roadmap/reviews/resident-lighting-ci-e0b4593*`에 있다.
 
 ## Heightmap·시야·chunk packet 추가
 
