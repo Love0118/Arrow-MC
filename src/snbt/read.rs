@@ -34,13 +34,20 @@ pub fn parse_utf16(input: &[u16], limits: Limits) -> Result<Tag, Error> {
 /// Parses one argument and returns its consumed UTF-16 offset. Trailing
 /// whitespace is not consumed unless it belongs to a matched grammar token.
 pub fn parse_prefix(input: &[u16], limits: Limits) -> Result<(Tag, usize), Error> {
+    parse_prefix_accounted(input, limits).map(|(tag, consumed, _)| (tag, consumed))
+}
+
+pub(crate) fn parse_prefix_accounted(
+    input: &[u16],
+    limits: Limits,
+) -> Result<(Tag, usize, usize), Error> {
     limits.validate()?;
     check_input(input.len(), limits)?;
     let mut parser = Parser::new(input, limits, 0);
     let value = parser
         .value(0)
         .map_err(|failure| parser.finish_error(failure))?;
-    Ok((value, parser.pos))
+    Ok((value, parser.pos, parser.allocation))
 }
 
 pub fn parse_compound(input: &str, limits: Limits) -> Result<Compound, Error> {

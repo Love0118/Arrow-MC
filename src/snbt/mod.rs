@@ -16,6 +16,7 @@ mod write;
 
 use std::fmt;
 
+pub(crate) use read::parse_prefix_accounted;
 pub use read::{parse, parse_compound, parse_compound_utf16, parse_prefix, parse_utf16};
 pub use write::{write, write_pretty};
 

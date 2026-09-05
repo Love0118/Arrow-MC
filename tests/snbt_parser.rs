@@ -148,7 +148,7 @@ fn compound_batch_build_retains_last_duplicate_without_reordering_utf16_keys() {
     ])
     .unwrap();
     assert_eq!(actual, Tag::Compound(expected));
-    assert!(Compound::from_entries(vec![CompoundEntry::new("a".into(), Tag::End)]).is_err());
+    assert!(Compound::from_entries(vec![CompoundEntry::new("a".into(), Tag::End)]).is_ok());
 }
 
 #[test]

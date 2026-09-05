@@ -53,6 +53,7 @@ Pumpkin 참조 커밋에는 GPL-3.0 라이선스 문서가 있다. 실제 코드
 | --- | --- | --- | --- |
 | `src/wire/mod.rs` | VarInt/VarLong의 byte 의미를 확인한 후 slice API·오류·길이 기반 writer를 별도 작성 | 작성 에이전트 보고와 원문 비교에서 pasted body/comment 없음, 외부 dependency 없음 | source-exposed 구현. 형식상 필요한 bit 연산·상수 유사성은 존재하며 법적 판정은 아님 |
 | `src/nbt/mod.rs`, `read.rs`, `write.rs` | NBT 규칙·Java oracle 확인 후 UTF-16 값·정렬 Vec compound·transactional reader/writer·Rust 자원 예산을 별도 설계 | 작성 에이전트 보고에서 pasted body/comment 없음, Pumpkin dependency 없음 | mixed-list wrapper·quota·수치 의미는 호환 목적의 원문/관찰 기반이며 clean-room 아님 |
+| `src/nbt/numeric.rs`, `predicate.rs`, `path/*` | 현재 NumericTag·NbtUtils·NbtPathArgument와 실제 API 관찰에서 규칙을 확인한 후 반복형 비교·소유 참조 BFS·공유 예산·오류/해제를 독립 설계 | 원문 본문·주석 복사나 범용 Java class hierarchy 도입 없음 | Java 객체 별칭·unchecked 예외·End binary 출력과 다른 경계를 명시하며 전체 서버 소비자 동등성은 별도 검증 |
 | `src/snbt/*` | 현재 grammar·직접 만든 JVM 사례를 확인하여 구체적인 UTF-16 parser, 작은 오류 메타데이터와 formatter를 별도 작성 | parser framework·Java 본문 복사·외부 Rust dependency 없음 | source-guided 구현이며 모든 새 소비자의 동작 검증을 대신하지 않음 |
 | `src/unicode_names/*`, `third_party/unicode/*` | 공식 Unicode16 데이터에서 자체 생성기가 compact binary를 생성, 독립 lookup을 Java25와 대조 | Unicode 데이터는 Unicode License v3로 포함하며 전체 고지·URL·checksum 보존 | JDK 소스·table·oracle 출력은 생성 입력 아님. 바이너리 배포 시 고지 동봉 필요 |
 | `tests/*` | 직접 작성한 작은 binary 사례 및 로컬 공식 API 호출 oracle | JAR·디컴파일 파일을 저장하지 않음. fixture는 작은 입력·관찰 결과 | 일치 검사는 정확성 근거이며 저작권 허가를 대신하지 않음 |

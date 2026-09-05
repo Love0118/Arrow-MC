@@ -258,8 +258,10 @@ fn invalid_end_unknown_tags_and_negative_lengths_are_rejected() {
         ),
         Err(Error::UnexpectedEnd)
     );
+    let mut runtime = Compound::new();
+    assert_eq!(runtime.insert("bad".into(), Tag::End), Ok(None));
     assert_eq!(
-        Compound::new().insert("bad".into(), Tag::End),
+        write_network(&Tag::Compound(runtime), &mut Vec::new(), Limits::default()),
         Err(Error::UnexpectedEnd)
     );
 }

@@ -2,6 +2,22 @@
 
 기준일 2026-09-05. 전체 서버 목표는 진행 중이며 아이템 행동 게이트는 닫혀 있다.
 
+## NBT 경로 기반 추가
+
+현재 `src/nbt`에 여섯 NumericTag 변환, 반복형 predicate/exact comparison, 여섯 node의 NBT 경로
+parse/get/count/create/set/insert/remove를 추가했다. 상세한 ownership·부분 변경·End binary 정책 차이는 [NBT 경로 문서](nbt-path.md)에 있다.
+공식 path 관찰3,050개와 수치603,804개·predicate124,848개 실제 JVM 대조를 통과했다.
+전체 로컬 debug/release154개, Clippy·format, Python22개 통과이며 선택 oracle5개/1개는 기본 실행에서 제외한다.
+Java unchecked예외11개·immutable identity20개·소유 supplier별칭1개·End binary11개는 동일하다고 숨기지 않고 명시적인 API 경계로 검증한다.
+
+거부된20,000단계 factory 값의 재귀 해제로 stack overflow가 발생하던 문제를 수정했다.
+`Tag::drop_iterative`와 소유 임시값 guard는 이미 비워진 container slot을 사용해 추가 할당·unsafe 없이 해제한다.
+정확성·최적화 리뷰어가 경로·공유 예산·부분 복사·오류 후 해제를 독립 확인했다. 이 batch의 native CI 결과는 별도 기록한다.
+
+NBT의 남은 범위를 서버 전체의 선행 조건으로 확장하지 않는다. 사용자 피드백에 따라 실제 TCP status/ping 서버,
+청크 section palette/packed storage, 제한된 shared CPU worker를 독립 구현 경로로 병행한다.
+아이템 행동 게이트는 유지하며 병렬 tick 전체·청크 로딩 전체가 구현됐다고 표시하지 않는다.
+
 ## 구현한 범위
 
 - `src/wire`: signed VarInt/VarLong의 읽기·쓰기·길이. Java의 비정규 표현 수용, 마지막 byte의 상위 bit 절삭과

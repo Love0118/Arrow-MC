@@ -21,7 +21,9 @@ tick 병렬화는 초기에 단일 스레드 대조 경로와 함께 개발할 �
 Rust `1.96.0`, 단일 library package, 외부 Rust dependency 0개로 시작합니다.
 `src/nbt`는 모든 binary tag·Java modified UTF-8·mixed list·named/network root·자원 제한을 처리합니다.
 `src/snbt`는 현대 SNBT parser·compact/pretty writer와 UTF-16 진단을 처리합니다. [범위·자원 정책·대조 근거](docs/snbt.md)를 별도로 기록합니다.
-`src/wire`는 VarInt/VarLong을 처리합니다. NBT path/ops·압축·registry/component와 item gameplay는 아직 구현 전입니다.
+`src/nbt/path`와 `src/nbt/predicate`는 경로 조회·생성·변경·삭제와 bounded 비교를 처리하고, 여섯 NumericTag 변환도 제공합니다.
+[NBT 경로 범위와 API 차이](docs/nbt-path.md)를 구분해 기록합니다. `src/wire`는 VarInt/VarLong을 처리합니다.
+NBT ops·압축·registry/component와 item gameplay는 아직 구현 전입니다.
 로컬 디코더 메모리 예산은 요청한 backing allocation의 누계이며 RSS 상한을 뜻하지 않습니다. writer는 추가 출력 길이를 제한합니다.
 
 ```powershell

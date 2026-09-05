@@ -9,6 +9,9 @@
 //! `ListTag.java`, `CompoundTag.java`, `NbtAccounter.java` and the primitive tag
 //! classes under `Decompile/sources/26.3-pre-2/net/minecraft/nbt/`.
 
+mod numeric;
+pub mod path;
+pub mod predicate;
 mod read;
 mod write;
 
@@ -85,9 +88,6 @@ impl Compound {
     /// duplicate keys. This is shared by independently budgeted binary/text readers.
     pub fn from_entries(mut entries: Vec<CompoundEntry>) -> Result<Self, Error> {
         for (sequence, entry) in entries.iter_mut().enumerate() {
-            if matches!(entry.value, Tag::End) {
-                return Err(Error::UnexpectedEnd);
-            }
             entry.sequence = sequence;
         }
         entries.sort_unstable_by(|a, b| a.name.cmp(&b.name).then(a.sequence.cmp(&b.sequence)));
@@ -113,11 +113,9 @@ impl Compound {
             .map(|index| &self.0[index].value)
     }
 
-    /// Replaces an existing key. `End` is a terminator, never a named value.
+    /// Replaces an existing runtime value, including End. Binary encoding
+    /// separately rejects End entries because they cannot round-trip on wire.
     pub fn insert(&mut self, key: NbtString, value: Tag) -> Result<Option<Tag>, Error> {
-        if matches!(value, Tag::End) {
-            return Err(Error::UnexpectedEnd);
-        }
         match self.0.binary_search_by(|entry| entry.name.cmp(&key)) {
             Ok(index) => Ok(Some(std::mem::replace(&mut self.0[index].value, value))),
             Err(index) => {
@@ -137,6 +135,20 @@ impl Compound {
 
     fn is_wrapper(&self) -> bool {
         self.0.len() == 1 && self.0[0].name.is_empty()
+    }
+
+    pub fn get_mut(&mut self, key: &NbtString) -> Option<&mut Tag> {
+        self.0
+            .binary_search_by(|entry| entry.name.cmp(key))
+            .ok()
+            .map(|index| &mut self.0[index].value)
+    }
+
+    pub fn remove(&mut self, key: &NbtString) -> Option<Tag> {
+        self.0
+            .binary_search_by(|entry| entry.name.cmp(key))
+            .ok()
+            .map(|index| self.0.remove(index).value)
     }
 }
 
@@ -187,6 +199,65 @@ impl PartialEq for Tag {
 impl Eq for Tag {}
 
 impl Tag {
+    /// Releases an owned tree without recursion or auxiliary allocation.
+    /// Useful when a caller constructs trees deeper than binary codec limits.
+    pub fn drop_iterative(self) {
+        let mut current = self;
+        let mut parents = Tag::End;
+        loop {
+            // Every saved parent owns its unvisited children plus one final
+            // continuation slot. The slot was vacated by popping the child we
+            // descend into, so pushing the parent link never allocates.
+            match current {
+                Tag::List(mut children) if !children.is_empty() => {
+                    current = children.pop().unwrap();
+                    children.push(parents);
+                    parents = Tag::List(children);
+                    continue;
+                }
+                Tag::Compound(mut compound) if !compound.0.is_empty() => {
+                    current = compound.0.pop().unwrap().value;
+                    compound
+                        .0
+                        .push(CompoundEntry::new(NbtString::default(), parents));
+                    parents = Tag::Compound(compound);
+                    continue;
+                }
+                leaf => drop(leaf),
+            }
+            loop {
+                match parents {
+                    // Only this local continuation variable uses End as its
+                    // sentinel. Original End values follow the leaf path above.
+                    Tag::End => return,
+                    Tag::List(mut children) => {
+                        let previous = children.pop().unwrap();
+                        if let Some(child) = children.pop() {
+                            children.push(previous);
+                            parents = Tag::List(children);
+                            current = child;
+                            break;
+                        }
+                        parents = previous;
+                    }
+                    Tag::Compound(mut compound) => {
+                        let previous = compound.0.pop().unwrap().value;
+                        if let Some(entry) = compound.0.pop() {
+                            compound
+                                .0
+                                .push(CompoundEntry::new(NbtString::default(), previous));
+                            parents = Tag::Compound(compound);
+                            current = entry.value;
+                            break;
+                        }
+                        parents = previous;
+                    }
+                    _ => unreachable!("only owned containers form continuation links"),
+                }
+            }
+        }
+    }
+
     pub fn id(&self) -> u8 {
         match self {
             Self::End => 0,
@@ -274,7 +345,7 @@ impl fmt::Display for Error {
             Self::NegativeLength(length) => write!(f, "negative NBT length {length}"),
             error => f.write_str(match error {
                 Self::Truncated => "truncated NBT input",
-                Self::UnexpectedEnd => "NBT End is not a list or compound value",
+                Self::UnexpectedEnd => "NBT End cannot be encoded as a list or compound value",
                 Self::InvalidModifiedUtf8 => "invalid Java modified UTF-8",
                 Self::StringTooLong => "NBT string exceeds 65535 modified UTF-8 bytes",
                 Self::LengthOverflow => "NBT length arithmetic overflow",

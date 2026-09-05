@@ -156,6 +156,9 @@ impl Writer<'_> {
             Tag::Compound(compound) => {
                 let child_depth = self.container(depth)?;
                 for entry in compound.entries() {
+                    if matches!(entry.value, Tag::End) {
+                        return Err(Error::UnexpectedEnd);
+                    }
                     self.byte(entry.value.id())?;
                     self.string(&entry.name)?;
                     self.payload(&entry.value, child_depth)?;
